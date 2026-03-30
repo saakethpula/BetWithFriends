@@ -39,7 +39,7 @@ before starting the service.
 
 ## Cloudflare Workers frontend
 
-Deploy from `apps/web`.
+Deploy the frontend workspace only. If you run Wrangler from the repo root, it will fail because this repository is an npm workspace monorepo.
 
 Set:
 
@@ -52,9 +52,23 @@ Build/deploy:
 
 ```bash
 npm install
+npm run build:web
+npm run deploy:web
+```
+
+If you prefer running commands manually, switch to `apps/web` first:
+
+```bash
+cd apps/web
 npm run build
 npx wrangler deploy
 ```
+
+For Cloudflare Pages builds, set:
+
+- Root directory: `apps/web`
+- Build command: `npm run build`
+- Build output directory: `dist`
 
 ## Final production checklist
 

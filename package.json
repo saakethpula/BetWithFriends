@@ -12,6 +12,7 @@
     "build": "npm run build:api && npm run build:web",
     "build:api": "npm --workspace apps/api run build",
     "build:web": "npm --workspace apps/web run build",
+    "deploy:web": "npm --workspace apps/web exec wrangler deploy",
     "start": "npm --workspace apps/api run start",
     "prisma:generate": "npm --workspace apps/api run prisma:generate",
     "prisma:migrate": "npm --workspace apps/api run prisma:migrate"
