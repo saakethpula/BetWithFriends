@@ -1,0 +1,43 @@
+import { Router } from "express";
+import { prisma } from "../db.js";
+
+export const meRouter = Router();
+
+meRouter.get("/", async (req, res) => {
+  const currentUser = req.currentUser!;
+
+  const memberships = await prisma.groupMembership.findMany({
+    where: { userId: currentUser.id },
+    include: {
+      group: {
+        include: {
+          memberships: {
+            include: {
+              user: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  });
+
+  res.json({
+    user: currentUser,
+    groups: memberships.map((membership) => ({
+      id: membership.group.id,
+      name: membership.group.name,
+      joinCode: membership.group.joinCode,
+      role: membership.role,
+      members: membership.group.memberships.map((groupMembership) => ({
+        id: groupMembership.user.id,
+        displayName: groupMembership.user.displayName,
+        email: groupMembership.user.email,
+        avatarUrl: groupMembership.user.avatarUrl,
+        role: groupMembership.role
+      }))
+    }))
+  });
+});

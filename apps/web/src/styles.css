@@ -1,0 +1,219 @@
+:root {
+  color-scheme: light;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(251, 191, 36, 0.35), transparent 28%),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.18), transparent 30%),
+    linear-gradient(180deg, #fef7ed 0%, #fffaf2 45%, #fff 100%);
+  color: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 2rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.hero,
+.card,
+.topbar,
+.status-row,
+.market-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(251, 146, 60, 0.18);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(120, 53, 15, 0.08);
+}
+
+.hero,
+.card,
+.market-card {
+  padding: 1.5rem;
+}
+
+.hero {
+  max-width: 760px;
+  margin: auto;
+}
+
+.topbar,
+.status-row {
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.market-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.market-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.market-header,
+.section-heading,
+.market-actions,
+.market-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.market-metrics > div {
+  min-width: 110px;
+  display: grid;
+}
+
+.eyebrow,
+.muted,
+.badge,
+.group-chip small,
+.market-metrics span {
+  color: #6b7280;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.76rem;
+  margin: 0 0 0.25rem;
+}
+
+.lede {
+  max-width: 58ch;
+  font-size: 1.15rem;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  border: 1px solid #fdba74;
+  background: #fff;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.8rem 1.15rem;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+.primary {
+  background: linear-gradient(135deg, #ea580c, #f97316);
+  color: white;
+}
+
+.secondary {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.ghost {
+  background: transparent;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.group-chip {
+  width: 100%;
+  background: #fff7ed;
+  color: #7c2d12;
+  display: flex;
+  justify-content: space-between;
+}
+
+.group-chip.active {
+  background: #fb923c;
+  color: white;
+}
+
+.group-chip.active small {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.badge {
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  background: #fff7ed;
+}
+
+.badge.open {
+  color: #9a3412;
+}
+
+.badge.resolved {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 1px dashed #fdba74;
+  border-radius: 20px;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 1rem;
+  }
+
+  .topbar,
+  .status-row,
+  .section-heading,
+  .market-header,
+  .market-actions,
+  .market-metrics {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

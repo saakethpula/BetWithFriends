@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: family-prediction-market-api
+    env: node
+    rootDir: apps/api
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_AUDIENCE
+        sync: false
+      - key: AUTH0_ISSUER_BASE_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: PORT
+        value: 10000

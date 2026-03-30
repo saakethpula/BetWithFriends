@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GroupRole {
+  ADMIN
+  MEMBER
+}
+
+enum MarketStatus {
+  OPEN
+  CLOSED
+  RESOLVED
+}
+
+enum PositionSide {
+  YES
+  NO
+}
+
+model User {
+  id             String          @id @default(cuid())
+  auth0UserId    String          @unique
+  email          String          @unique
+  displayName    String
+  avatarUrl      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  memberships    GroupMembership[]
+  createdMarkets Market[]        @relation("CreatedMarkets")
+  targetMarkets  Market[]        @relation("TargetMarkets")
+  positions      Position[]
+}
+
+model FamilyGroup {
+  id           String            @id @default(cuid())
+  name         String
+  joinCode     String            @unique
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  memberships  GroupMembership[]
+  markets      Market[]
+}
+
+model GroupMembership {
+  id        String      @id @default(cuid())
+  userId    String
+  groupId   String
+  role      GroupRole   @default(MEMBER)
+  createdAt DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     FamilyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+}
+
+model Market {
+  id              String       @id @default(cuid())
+  groupId         String
+  createdByUserId String
+  targetUserId    String
+  question        String
+  description     String?
+  closesAt        DateTime
+  resolvesAt      DateTime?
+  status          MarketStatus @default(OPEN)
+  resolution      Boolean?
+  liquidityPool   Int          @default(100)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  group           FamilyGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdBy       User         @relation("CreatedMarkets", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  targetUser      User         @relation("TargetMarkets", fields: [targetUserId], references: [id], onDelete: Cascade)
+  positions       Position[]
+}
+
+model Position {
+  id        String       @id @default(cuid())
+  marketId  String
+  userId    String
+  side      PositionSide
+  amount    Int
+  createdAt DateTime     @default(now())
+  market    Market       @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([marketId])
+  @@index([userId])
+}

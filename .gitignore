@@ -1,0 +1,11 @@
+node_modules
+.wrangler
+.env
+.env.*
+dist
+build
+coverage
+apps/api/generated
+apps/api/prisma/dev.db
+apps/api/prisma/dev.db-journal
+apps/web/.dev.vars
