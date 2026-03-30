@@ -45,7 +45,9 @@ export type Market = {
   targetUser: {
     id: string;
     displayName: string;
-  };
+  } | null;
+  targetUserId: string | null;
+  isGeneral: boolean;
   positions: Array<{
     id: string;
     userId: string;
@@ -161,7 +163,7 @@ export function createMarket(
   token: string,
   payload: {
     groupId: string;
-    targetUserId: string;
+    targetUserId?: string | null;
     question: string;
     description?: string;
     closesAt: string;
@@ -220,3 +222,5 @@ export function addGroupBalance(token: string, groupId: string, amount: number) 
     body: JSON.stringify({ amount })
   });
 }
+
+export const addUserBalance = addGroupBalance;

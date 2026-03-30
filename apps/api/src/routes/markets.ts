@@ -15,7 +15,7 @@ export const marketsRouter = Router();
 
 const createMarketSchema = z.object({
   groupId: z.string().min(1),
-  targetUserId: z.string().min(1),
+  targetUserId: z.string().min(1).nullable().optional(),
   question: z.string().min(10).max(200),
   description: z.string().max(1000).optional(),
   closesAt: z.string().datetime(),
@@ -35,7 +35,7 @@ type SerializableMarket = {
   id: string;
   groupId: string;
   createdByUserId: string;
-  targetUserId: string;
+  targetUserId: string | null;
   question: string;
   description: string | null;
   closesAt: Date;
@@ -46,7 +46,7 @@ type SerializableMarket = {
   createdAt: Date;
   updatedAt: Date;
   createdBy: { id: string; displayName: string };
-  targetUser: { id: string; displayName: string };
+  targetUser: { id: string; displayName: string } | null;
   positions: Array<{
     id: string;
     marketId: string;
@@ -90,7 +90,8 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
 
   return {
     ...market,
-    summary: calculateMarketSummary(market, confirmedPositions),
+    isGeneral: market.targetUserId === null,
+    summary: calculateMarketSummary(confirmedPositions),
     userPosition: calculateUserPosition(confirmedPositions, currentUserId),
     userPendingPosition: calculateUserPosition(pendingPositions, currentUserId),
     userPayout: payouts.get(currentUserId) ?? 0,
@@ -123,9 +124,14 @@ marketsRouter.get("/", asyncHandler(async (req, res) => {
   const markets = await prisma.market.findMany({
     where: {
       groupId,
-      targetUserId: {
-        not: currentUser.id
-      }
+      OR: [
+        { targetUserId: { equals: null } },
+        {
+          targetUserId: {
+            not: currentUser.id
+          }
+        }
+      ]
     },
     include: {
       createdBy: true,
@@ -154,8 +160,9 @@ marketsRouter.get("/", asyncHandler(async (req, res) => {
 marketsRouter.post("/", asyncHandler(async (req, res) => {
   const currentUser = req.currentUser!;
   const input = createMarketSchema.parse(req.body);
+  const targetUserId = input.targetUserId ?? null;
 
-  if (currentUser.id === input.targetUserId) {
+  if (targetUserId && currentUser.id === targetUserId) {
     return res
       .status(400)
       .json({ message: "You cannot create a hidden market about yourself." });
@@ -182,10 +189,10 @@ marketsRouter.post("/", asyncHandler(async (req, res) => {
   }
 
   const targetMembership = membership.group.memberships.find(
-    (groupMembership) => groupMembership.userId === input.targetUserId
+    (groupMembership) => groupMembership.userId === targetUserId
   );
 
-  if (!targetMembership) {
+  if (targetUserId && !targetMembership) {
     return res.status(400).json({ message: "Target user is not in this family group." });
   }
 
@@ -193,7 +200,7 @@ marketsRouter.post("/", asyncHandler(async (req, res) => {
     data: {
       groupId: input.groupId,
       createdByUserId: currentUser.id,
-      targetUserId: input.targetUserId,
+      targetUserId,
       question: input.question,
       description: input.description,
       closesAt: new Date(input.closesAt),

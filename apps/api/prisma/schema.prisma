@@ -69,7 +69,7 @@ model Market {
   id              String       @id @default(cuid())
   groupId         String
   createdByUserId String
-  targetUserId    String
+  targetUserId    String?
   question        String
   description     String?
   closesAt        DateTime
@@ -81,7 +81,7 @@ model Market {
   updatedAt       DateTime     @updatedAt
   group           FamilyGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdBy       User         @relation("CreatedMarkets", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  targetUser      User         @relation("TargetMarkets", fields: [targetUserId], references: [id], onDelete: Cascade)
+  targetUser      User?        @relation("TargetMarkets", fields: [targetUserId], references: [id], onDelete: Cascade)
   positions       Position[]
 }
 

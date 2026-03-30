@@ -1,0 +1,2 @@
+ALTER TABLE "Market"
+ALTER COLUMN "targetUserId" DROP NOT NULL;

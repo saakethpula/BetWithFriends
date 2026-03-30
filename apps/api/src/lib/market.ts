@@ -1,4 +1,4 @@
-import type { Market, Position, PositionSide, PositionStatus } from "@prisma/client";
+import type { Position, PositionSide, PositionStatus } from "@prisma/client";
 
 type PositionLike = Pick<Position, "userId" | "side" | "amount" | "status">;
 
@@ -10,7 +10,7 @@ export function filterPendingPositions<T extends PositionLike>(positions: T[]) {
   return positions.filter((position) => position.status === "PENDING");
 }
 
-export function calculateMarketSummary(market: Market, positions: PositionLike[]) {
+export function calculateMarketSummary(positions: PositionLike[]) {
   const yesVolume = positions
     .filter((position) => position.side === "YES")
     .reduce((total, position) => total + position.amount, 0);

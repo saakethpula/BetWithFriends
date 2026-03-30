@@ -77,3 +77,4 @@ export function addGroupBalance(token, groupId, amount) {
         body: JSON.stringify({ amount })
     });
 }
+export const addUserBalance = addGroupBalance;

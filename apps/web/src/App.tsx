@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import {
-  addGroupBalance,
+  addUserBalance,
   confirmPosition,
   createGroupWithBalance,
   createMarket,
@@ -17,6 +17,7 @@ import {
 } from "./lib/api";
 
 const DEFAULT_TRADE_AMOUNT = "25";
+const GENERAL_MARKET_VALUE = "GENERAL";
 
 function tomorrowAtNoon() {
   const date = new Date();
@@ -216,7 +217,7 @@ export default function App() {
     setBusyAction("top-up");
 
     try {
-      await addGroupBalance(token, selectedGroupId, Number(topUpAmount));
+      await addUserBalance(token, selectedGroupId, Number(topUpAmount));
       await refreshProfile(token);
       setTopUpAmount("100");
       setStatusMessage("Your balance was updated.");
@@ -235,7 +236,7 @@ export default function App() {
     try {
       await createMarket(token, {
         groupId: selectedGroupId,
-        targetUserId,
+        targetUserId: targetUserId === GENERAL_MARKET_VALUE ? null : targetUserId,
         question,
         description,
         closesAt: new Date(closesAt).toISOString()
@@ -390,7 +391,6 @@ export default function App() {
           <div className="metric-panel">
             <span className="metric-label">Available balance</span>
             <strong>{formatMoney(profile?.user.balance ?? 0)}</strong>
-            <small>Shared across every family group</small>
           </div>
           <div className="hero-controls">
             <button
@@ -554,6 +554,7 @@ export default function App() {
                 required
               >
                 <option value="">Choose who the market is about</option>
+                <option value={GENERAL_MARKET_VALUE}>General</option>
                 {selectedGroup?.members
                   .filter((member) => member.id !== profile?.user.id)
                   .map((member) => (
@@ -597,7 +598,7 @@ export default function App() {
                 <h2>{selectedGroup?.name ?? "Choose a group"}</h2>
               </div>
               <span className="subtle-copy">
-                Hidden markets stay invisible to the person they target.
+                General markets are visible to everyone. Person-specific markets stay hidden from the subject.
               </span>
             </div>
 
@@ -623,7 +624,9 @@ export default function App() {
                     <article key={market.id} className="market-panel">
                       <div className="market-topline">
                         <div>
-                          <p className="kicker">About {market.targetUser.displayName}</p>
+                          <p className="kicker">
+                            {market.isGeneral ? "General market" : `About ${market.targetUser?.displayName ?? "Family member"}`}
+                          </p>
                           <h3>{market.question}</h3>
                         </div>
                         <span className={`status-pill ${market.status.toLowerCase()}`}>{market.status}</span>
