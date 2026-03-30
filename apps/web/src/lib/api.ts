@@ -8,6 +8,7 @@ export type FamilyGroup = {
     displayName: string;
     email: string;
     avatarUrl?: string | null;
+    venmoHandle?: string | null;
     role: "ADMIN" | "MEMBER";
     balance: number;
   }>;
@@ -19,6 +20,7 @@ export type CurrentUserResponse = {
     email: string;
     displayName: string;
     avatarUrl?: string | null;
+    venmoHandle?: string | null;
     balance: number;
   };
   groups: FamilyGroup[];
@@ -81,12 +83,32 @@ export type Market = {
   venmoRecipient: {
     userId: string;
     displayName: string;
+    venmoHandle?: string | null;
   };
   creatorPayouts: Array<{
     userId: string;
     displayName: string;
     amount: number;
   }>;
+  payoutConfirmations: Array<{
+    id: string;
+    recipientUserId: string;
+    displayName: string;
+    amount: number;
+    status: "PENDING_CREATOR" | "PENDING_RECIPIENT" | "DISPUTED" | "CONFIRMED";
+    creatorMarkedAt?: string | null;
+    recipientRespondedAt?: string | null;
+  }>;
+  creatorPayoutsPendingCount: number;
+  userPayoutConfirmation: {
+    id: string;
+    recipientUserId: string;
+    displayName: string;
+    amount: number;
+    status: "PENDING_CREATOR" | "PENDING_RECIPIENT" | "DISPUTED" | "CONFIRMED";
+    creatorMarkedAt?: string | null;
+    recipientRespondedAt?: string | null;
+  } | null;
   pendingConfirmations: Array<{
     positionId: string;
     userId: string;
@@ -125,6 +147,13 @@ async function request<T>(
 
 export function getCurrentUser(token: string) {
   return request<CurrentUserResponse>("/api/me", token);
+}
+
+export function updateVenmoHandle(token: string, venmoHandle: string) {
+  return request<{ user: CurrentUserResponse["user"] }>("/api/me", token, {
+    method: "PATCH",
+    body: JSON.stringify({ venmoHandle })
+  });
 }
 
 export function createGroup(token: string, name: string) {
@@ -207,6 +236,19 @@ export function resolveMarket(
 export function confirmPosition(token: string, marketId: string, positionId: string) {
   return request<Market>(`/api/markets/${marketId}/positions/${positionId}/confirm`, token, {
     method: "POST"
+  });
+}
+
+export function markPayoutSent(token: string, marketId: string, payoutId: string) {
+  return request<Market>(`/api/markets/${marketId}/payouts/${payoutId}/sent`, token, {
+    method: "POST"
+  });
+}
+
+export function respondToPayout(token: string, marketId: string, payoutId: string, received: boolean) {
+  return request<Market>(`/api/markets/${marketId}/payouts/${payoutId}/respond`, token, {
+    method: "POST",
+    body: JSON.stringify({ received })
   });
 }
 

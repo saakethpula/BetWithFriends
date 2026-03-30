@@ -9,8 +9,11 @@ import {
   getCurrentUser,
   getMarkets,
   joinGroupWithBalance,
+  markPayoutSent,
   rejectPosition,
+  respondToPayout,
   resolveMarket,
+  updateVenmoHandle,
   upsertPosition,
   type CurrentUserResponse,
   type Market
@@ -57,6 +60,7 @@ export default function App() {
   const [groupName, setGroupName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [topUpAmount, setTopUpAmount] = useState("100");
+  const [venmoHandle, setVenmoHandle] = useState("");
   const [question, setQuestion] = useState("");
   const [description, setDescription] = useState("");
   const [targetUserId, setTargetUserId] = useState("");
@@ -80,6 +84,7 @@ export default function App() {
   async function refreshProfile(accessToken: string) {
     const nextProfile = await getCurrentUser(accessToken);
     setProfile(nextProfile);
+    setVenmoHandle(nextProfile.user.venmoHandle ?? "");
     return nextProfile;
   }
 
@@ -228,6 +233,22 @@ export default function App() {
     }
   }
 
+  async function handleSaveVenmoHandle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setBusyAction("venmo");
+
+    try {
+      await updateVenmoHandle(token, venmoHandle);
+      await refreshProfile(token);
+      setStatusMessage(`Venmo handle saved as @${venmoHandle.replace(/^@+/, "")}.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to save Venmo handle.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
   async function handleCreateMarket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -267,7 +288,7 @@ export default function App() {
       await refreshWorkspace(token, selectedGroupId);
       setStatusMessage(
         Number(draft.amount || "0") > 0
-          ? `Position submitted. Venmo ${formatMoney(Number(draft.amount || "0"))} to ${updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
+          ? `Position submitted. Venmo ${formatMoney(Number(draft.amount || "0"))} to ${updatedMarket.venmoRecipient.venmoHandle ? `@${updatedMarket.venmoRecipient.venmoHandle}` : updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
           : "Position removed."
       );
     } catch (requestError) {
@@ -337,6 +358,40 @@ export default function App() {
     }
   }
 
+  async function handleMarkPayoutSent(marketId: string, payoutId: string) {
+    setError("");
+    setBusyAction(`payout-sent-${payoutId}`);
+
+    try {
+      await markPayoutSent(token, marketId, payoutId);
+      await refreshWorkspace(token, selectedGroupId);
+      setStatusMessage("Payout marked as sent. The winner will now be asked to confirm receipt.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to mark payout as sent.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleRespondToPayout(marketId: string, payoutId: string, received: boolean) {
+    setError("");
+    setBusyAction(`payout-response-${payoutId}`);
+
+    try {
+      await respondToPayout(token, marketId, payoutId, received);
+      await refreshWorkspace(token, selectedGroupId);
+      setStatusMessage(
+        received
+          ? "Payout confirmed. Once every winner confirms, this market will disappear from the board."
+          : "Payout dispute sent back to the creator. They need to send payment again."
+      );
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to respond to payout confirmation.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
   if (isLoading) {
     return <main className="shell"><section className="loading-panel">Loading authentication...</section></main>;
   }
@@ -389,7 +444,7 @@ export default function App() {
         </div>
         <div className="hero-meta">
           <div className="metric-panel">
-            <span className="metric-label">Available balance</span>
+            <span className="metric-label">Available balance: </span>
             <strong>{formatMoney(profile?.user.balance ?? 0)}</strong>
           </div>
           <div className="hero-controls">
@@ -484,6 +539,23 @@ export default function App() {
                     disabled={!selectedGroupId || busyAction === "top-up"}
                   >
                     Add to my balance
+                  </button>
+                </form>
+
+                <form onSubmit={handleSaveVenmoHandle} className="form-stack compact-form">
+                  <span className="subtle-copy">Your Venmo handle for payment instructions</span>
+                  <input
+                    value={venmoHandle}
+                    onChange={(event) => setVenmoHandle(event.target.value)}
+                    placeholder="@yourhandle"
+                    required
+                  />
+                  <button
+                    className="secondary-button"
+                    type="submit"
+                    disabled={busyAction === "venmo"}
+                  >
+                    Save Venmo
                   </button>
                 </form>
 
@@ -702,12 +774,12 @@ export default function App() {
                         </button>
                         {market.status === "OPEN" ? (
                           <p className="trade-note">
-                            After saving, Venmo {formatMoney(Number(draft.amount || "0"))} to {market.venmoRecipient.displayName} so the market creator can escrow the pool.
+                            After saving, Venmo {formatMoney(Number(draft.amount || "0"))} to {market.venmoRecipient.venmoHandle ? `@${market.venmoRecipient.venmoHandle}` : market.venmoRecipient.displayName} so the market creator can escrow the pool.
                           </p>
                         ) : null}
                         {market.userPendingPosition.totalAmount > 0 ? (
                           <p className="trade-note pending-note">
-                            Pending confirmation: {formatMoney(market.userPendingPosition.totalAmount)}. This will not affect the market until {market.venmoRecipient.displayName} confirms receipt.
+                            Pending confirmation: {formatMoney(market.userPendingPosition.totalAmount)}. This will not affect the market until {market.venmoRecipient.venmoHandle ? `@${market.venmoRecipient.venmoHandle}` : market.venmoRecipient.displayName} confirms receipt.
                           </p>
                         ) : null}
                       </div>
@@ -755,7 +827,11 @@ export default function App() {
                         <div className="settlement-box">
                           <div className="settlement-heading">
                             <span className="kicker">Creator payout sheet</span>
-                            <strong>Send these payouts now</strong>
+                            <strong>
+                              {market.creatorPayoutsPendingCount === 0
+                                ? "All payouts confirmed"
+                                : "Send these payouts and wait for winners to confirm"}
+                            </strong>
                           </div>
                           {market.creatorPayouts.length === 0 ? (
                             <p className="subtle-copy">
@@ -763,13 +839,69 @@ export default function App() {
                             </p>
                           ) : (
                             <div className="settlement-list">
-                              {market.creatorPayouts.map((payout) => (
-                                <div key={payout.userId} className="settlement-row">
-                                  <span>{payout.displayName}</span>
-                                  <strong>{formatMoney(payout.amount)}</strong>
+                              {market.payoutConfirmations.map((payout) => (
+                                <div key={payout.id} className="settlement-row">
+                                  <div>
+                                    <span>{payout.displayName}</span>
+                                    <small>{formatMoney(payout.amount)} · {payout.status.replaceAll("_", " ")}</small>
+                                  </div>
+                                  <div className="market-footer-actions">
+                                    <strong>{formatMoney(payout.amount)}</strong>
+                                    {payout.status !== "CONFIRMED" ? (
+                                      <button
+                                        className="ghost-button yes-outline"
+                                        type="button"
+                                        disabled={busyAction === `payout-sent-${payout.id}`}
+                                        onClick={() => void handleMarkPayoutSent(market.id, payout.id)}
+                                      >
+                                        {payout.status === "PENDING_CREATOR" ? "Mark paid" : payout.status === "DISPUTED" ? "Re-prompt winner" : "Sent, awaiting reply"}
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 </div>
                               ))}
                             </div>
+                          )}
+                        </div>
+                      ) : null}
+
+                      {market.status === "RESOLVED" && market.userPayoutConfirmation ? (
+                        <div className="settlement-box">
+                          <div className="settlement-heading">
+                            <span className="kicker">Payout check</span>
+                            <strong>
+                              {market.userPayoutConfirmation.status === "CONFIRMED"
+                                ? "You already confirmed receipt"
+                                : `Did ${market.createdBy.displayName} pay you ${formatMoney(market.userPayoutConfirmation.amount)}?`}
+                            </strong>
+                          </div>
+                          {market.userPayoutConfirmation.status === "PENDING_RECIPIENT" || market.userPayoutConfirmation.status === "DISPUTED" ? (
+                            <div className="market-footer-actions">
+                              <button
+                                className="ghost-button yes-outline"
+                                type="button"
+                                disabled={busyAction === `payout-response-${market.userPayoutConfirmation.id}`}
+                                onClick={() => void handleRespondToPayout(market.id, market.userPayoutConfirmation!.id, true)}
+                              >
+                                I was paid
+                              </button>
+                              <button
+                                className="ghost-button no-outline"
+                                type="button"
+                                disabled={busyAction === `payout-response-${market.userPayoutConfirmation.id}`}
+                                onClick={() => void handleRespondToPayout(market.id, market.userPayoutConfirmation!.id, false)}
+                              >
+                                Not yet
+                              </button>
+                            </div>
+                          ) : market.userPayoutConfirmation.status === "PENDING_CREATOR" ? (
+                            <p className="subtle-copy">
+                              Waiting for {market.createdBy.displayName} to mark your payout as sent.
+                            </p>
+                          ) : (
+                            <p className="subtle-copy">
+                              Thanks. This market will disappear once every winner confirms.
+                            </p>
                           )}
                         </div>
                       ) : null}

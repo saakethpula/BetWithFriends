@@ -13,6 +13,15 @@ import { asyncHandler } from "../middleware/async-handler.js";
 
 export const marketsRouter = Router();
 
+const PAYOUT_CONFIRMATION_STATUS = {
+  PENDING_CREATOR: "PENDING_CREATOR",
+  PENDING_RECIPIENT: "PENDING_RECIPIENT",
+  DISPUTED: "DISPUTED",
+  CONFIRMED: "CONFIRMED"
+} as const;
+
+type PayoutConfirmationStatus = (typeof PAYOUT_CONFIRMATION_STATUS)[keyof typeof PAYOUT_CONFIRMATION_STATUS];
+
 const createMarketSchema = z.object({
   groupId: z.string().min(1),
   targetUserId: z.string().min(1).nullable().optional(),
@@ -31,6 +40,10 @@ const resolveMarketSchema = z.object({
   resolution: z.boolean()
 });
 
+const recipientPayoutResponseSchema = z.object({
+  received: z.boolean()
+});
+
 type SerializableMarket = {
   id: string;
   groupId: string;
@@ -45,7 +58,7 @@ type SerializableMarket = {
   liquidityPool: number;
   createdAt: Date;
   updatedAt: Date;
-  createdBy: { id: string; displayName: string };
+  createdBy: { id: string; displayName: string; venmoHandle?: string | null };
   targetUser: { id: string; displayName: string } | null;
   positions: Array<{
     id: string;
@@ -61,7 +74,75 @@ type SerializableMarket = {
       displayName: string;
     };
   }>;
+  payoutConfirmations: Array<{
+    id: string;
+    recipientUserId: string;
+    amount: number;
+    status: PayoutConfirmationStatus;
+    creatorMarkedAt: Date | null;
+    recipientRespondedAt: Date | null;
+    recipient: {
+      id: string;
+      displayName: string;
+    };
+  }>;
 };
+
+const detailedMarketInclude = {
+  createdBy: true,
+  targetUser: true,
+  positions: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          displayName: true
+        }
+      }
+    }
+  },
+  payoutConfirmations: {
+    include: {
+      recipient: {
+        select: {
+          id: true,
+          displayName: true
+        }
+      }
+    }
+  }
+} as const;
+
+async function findDetailedMarket(marketId: string) {
+  return prisma.market.findUnique({
+    where: { id: marketId },
+    include: detailedMarketInclude
+  } as never) as unknown as Promise<SerializableMarket | null>;
+}
+
+async function findDetailedMarketOrThrow(tx: typeof prisma | Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">, marketId: string) {
+  return tx.market.findUniqueOrThrow({
+    where: { id: marketId },
+    include: detailedMarketInclude
+  } as never) as unknown as Promise<SerializableMarket>;
+}
+
+async function refreshPayoutFinalization(tx: typeof prisma | Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">, marketId: string) {
+  const payoutConfirmations = await (tx as any).marketPayoutConfirmation.findMany({
+    where: { marketId }
+  });
+
+  const allConfirmed =
+    payoutConfirmations.length === 0 ||
+    payoutConfirmations.every((confirmation: { status: PayoutConfirmationStatus }) => confirmation.status === PAYOUT_CONFIRMATION_STATUS.CONFIRMED);
+
+  await tx.market.update({
+    where: { id: marketId },
+    data: {
+      payoutsFinalizedAt: allConfirmed ? new Date() : null
+    } as never
+  } as never);
+}
 
 function serializeMarket(market: SerializableMarket, currentUserId: string) {
   const confirmedPositions = filterConfirmedPositions(market.positions);
@@ -87,6 +168,22 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
       createdAt: position.createdAt
     }))
     .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  const payoutConfirmations = market.payoutConfirmations
+    .map((confirmation) => ({
+      id: confirmation.id,
+      recipientUserId: confirmation.recipientUserId,
+      displayName: confirmation.recipient.displayName,
+      amount: confirmation.amount,
+      status: confirmation.status,
+      creatorMarkedAt: confirmation.creatorMarkedAt,
+      recipientRespondedAt: confirmation.recipientRespondedAt
+    }))
+    .sort((left, right) => right.amount - left.amount);
+  const creatorPayoutsPendingCount = payoutConfirmations.filter(
+    (confirmation) => confirmation.status !== "CONFIRMED"
+  ).length;
+  const userPayoutConfirmation =
+    payoutConfirmations.find((confirmation) => confirmation.recipientUserId === currentUserId) ?? null;
 
   return {
     ...market,
@@ -97,9 +194,13 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
     userPayout: payouts.get(currentUserId) ?? 0,
     venmoRecipient: {
       userId: market.createdBy.id,
-      displayName: market.createdBy.displayName
+      displayName: market.createdBy.displayName,
+      venmoHandle: market.createdBy.venmoHandle ?? null
     },
     creatorPayouts,
+    payoutConfirmations,
+    creatorPayoutsPendingCount,
+    userPayoutConfirmation,
     pendingConfirmations
   };
 }
@@ -131,26 +232,19 @@ marketsRouter.get("/", asyncHandler(async (req, res) => {
             not: currentUser.id
           }
         }
-      ]
-    },
-    include: {
-      createdBy: true,
-      targetUser: true,
-      positions: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              displayName: true
-            }
-          }
-        }
+      ],
+      NOT: {
+        AND: [
+          { status: MarketStatus.RESOLVED },
+          { payoutsFinalizedAt: { not: null } }
+        ]
       }
     },
+    include: detailedMarketInclude,
     orderBy: {
       createdAt: "desc"
     }
-  });
+  } as never) as unknown as SerializableMarket[];
 
   res.json(
     markets.map((market) => serializeMarket(market, currentUser.id))
@@ -206,21 +300,8 @@ marketsRouter.post("/", asyncHandler(async (req, res) => {
       closesAt: new Date(input.closesAt),
       resolvesAt: input.resolvesAt ? new Date(input.resolvesAt) : null
     },
-    include: {
-      createdBy: true,
-      targetUser: true,
-      positions: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              displayName: true
-            }
-          }
-        }
-      }
-    }
-  });
+    include: detailedMarketInclude
+  } as never) as unknown as SerializableMarket;
 
   res.status(201).json({
     ...serializeMarket(market, currentUser.id)
@@ -232,23 +313,7 @@ marketsRouter.put("/:marketId/position", asyncHandler(async (req, res) => {
   const marketId = z.string().parse(req.params.marketId);
   const input = createPositionSchema.parse(req.body);
 
-  const market = await prisma.market.findUnique({
-    where: { id: marketId },
-    include: {
-      createdBy: true,
-      targetUser: true,
-      positions: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              displayName: true
-            }
-          }
-        }
-      }
-    }
-  });
+  const market = await findDetailedMarket(marketId);
 
   if (!market) {
     return res.status(404).json({ message: "Market not found." });
@@ -315,23 +380,7 @@ marketsRouter.put("/:marketId/position", asyncHandler(async (req, res) => {
       });
     }
     
-    return tx.market.findUniqueOrThrow({
-      where: { id: marketId },
-      include: {
-        createdBy: true,
-        targetUser: true,
-        positions: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                displayName: true
-              }
-            }
-          }
-        }
-      }
-    });
+    return findDetailedMarketOrThrow(tx, marketId);
   });
 
   res.status(200).json(serializeMarket(updatedMarket, currentUser.id));
@@ -342,23 +391,7 @@ marketsRouter.post("/:marketId/positions/:positionId/confirm", asyncHandler(asyn
   const marketId = z.string().parse(req.params.marketId);
   const positionId = z.string().parse(req.params.positionId);
 
-  const market = await prisma.market.findUnique({
-    where: { id: marketId },
-    include: {
-      createdBy: true,
-      targetUser: true,
-      positions: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              displayName: true
-            }
-          }
-        }
-      }
-    }
-  });
+  const market = await findDetailedMarket(marketId);
 
   if (!market) {
     return res.status(404).json({ message: "Market not found." });
@@ -383,23 +416,7 @@ marketsRouter.post("/:marketId/positions/:positionId/confirm", asyncHandler(asyn
       }
     });
 
-    return tx.market.findUniqueOrThrow({
-      where: { id: marketId },
-      include: {
-        createdBy: true,
-        targetUser: true,
-        positions: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                displayName: true
-              }
-            }
-          }
-        }
-      }
-    });
+    return findDetailedMarketOrThrow(tx, marketId);
   });
 
   res.json(serializeMarket(updatedMarket, currentUser.id));
@@ -410,23 +427,7 @@ marketsRouter.delete("/:marketId/positions/:positionId", asyncHandler(async (req
   const marketId = z.string().parse(req.params.marketId);
   const positionId = z.string().parse(req.params.positionId);
 
-  const market = await prisma.market.findUnique({
-    where: { id: marketId },
-    include: {
-      createdBy: true,
-      targetUser: true,
-      positions: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              displayName: true
-            }
-          }
-        }
-      }
-    }
-  });
+  const market = await findDetailedMarket(marketId);
 
   if (!market) {
     return res.status(404).json({ message: "Market not found." });
@@ -456,23 +457,7 @@ marketsRouter.delete("/:marketId/positions/:positionId", asyncHandler(async (req
       where: { id: positionId }
     });
 
-    return tx.market.findUniqueOrThrow({
-      where: { id: marketId },
-      include: {
-        createdBy: true,
-        targetUser: true,
-        positions: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                displayName: true
-              }
-            }
-          }
-        }
-      }
-    });
+    return findDetailedMarketOrThrow(tx, marketId);
   });
 
   res.json(serializeMarket(updatedMarket, currentUser.id));
@@ -488,9 +473,10 @@ marketsRouter.post("/:marketId/resolve", asyncHandler(async (req, res) => {
     include: {
       positions: true,
       createdBy: true,
-      targetUser: true
+      targetUser: true,
+      payoutConfirmations: true
     }
-  });
+  } as never) as (SerializableMarket & { payoutConfirmations: Array<{ id: string; recipientUserId: string; amount: number; status: PayoutConfirmationStatus }> }) | null;
 
   if (!market) {
     return res.status(404).json({ message: "Market not found." });
@@ -538,27 +524,27 @@ marketsRouter.post("/:marketId/resolve", asyncHandler(async (req, res) => {
       data: {
         status: MarketStatus.RESOLVED,
         resolution: input.resolution,
-        resolvesAt: market.resolvesAt ?? new Date()
-      }
+        resolvesAt: market.resolvesAt ?? new Date(),
+        payoutsFinalizedAt: payouts.size === 0 ? new Date() : null
+      } as never
+    } as never);
+
+    await (tx as any).marketPayoutConfirmation.deleteMany({
+      where: { marketId }
     });
 
-    return tx.market.findUniqueOrThrow({
-      where: { id: marketId },
-      include: {
-        createdBy: true,
-        targetUser: true,
-        positions: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                displayName: true
-              }
-            }
-          }
-        }
-      }
-    });
+    if (payouts.size > 0) {
+      await (tx as any).marketPayoutConfirmation.createMany({
+        data: [...payouts.entries()].map(([recipientUserId, amount]) => ({
+          marketId,
+          recipientUserId,
+          amount,
+          status: PAYOUT_CONFIRMATION_STATUS.PENDING_CREATOR
+        }))
+      });
+    }
+
+    return findDetailedMarketOrThrow(tx, marketId);
   });
 
   res.json(serializeMarket(updated, currentUser.id));
@@ -624,4 +610,85 @@ marketsRouter.delete("/:marketId", asyncHandler(async (req, res) => {
   });
 
   res.json({ deleted: true });
+}));
+
+marketsRouter.post("/:marketId/payouts/:payoutId/sent", asyncHandler(async (req, res) => {
+  const currentUser = req.currentUser!;
+  const marketId = z.string().parse(req.params.marketId);
+  const payoutId = z.string().parse(req.params.payoutId);
+
+  const market = await findDetailedMarket(marketId);
+
+  if (!market) {
+    return res.status(404).json({ message: "Market not found." });
+  }
+
+  if (market.createdByUserId !== currentUser.id) {
+    return res.status(403).json({ message: "Only the market creator can mark payouts as sent." });
+  }
+
+  if (market.status !== MarketStatus.RESOLVED) {
+    return res.status(400).json({ message: "Only resolved markets can start payout confirmations." });
+  }
+
+  const payout = market.payoutConfirmations.find((entry) => entry.id === payoutId);
+
+  if (!payout) {
+    return res.status(404).json({ message: "Payout confirmation not found." });
+  }
+
+  const updatedMarket = await prisma.$transaction(async (tx) => {
+    await (tx as any).marketPayoutConfirmation.update({
+      where: { id: payoutId },
+      data: {
+        status: PAYOUT_CONFIRMATION_STATUS.PENDING_RECIPIENT,
+        creatorMarkedAt: new Date()
+      }
+    });
+
+    await refreshPayoutFinalization(tx, marketId);
+
+    return findDetailedMarketOrThrow(tx, marketId);
+  });
+
+  res.json(serializeMarket(updatedMarket, currentUser.id));
+}));
+
+marketsRouter.post("/:marketId/payouts/:payoutId/respond", asyncHandler(async (req, res) => {
+  const currentUser = req.currentUser!;
+  const marketId = z.string().parse(req.params.marketId);
+  const payoutId = z.string().parse(req.params.payoutId);
+  const input = recipientPayoutResponseSchema.parse(req.body);
+
+  const market = await findDetailedMarket(marketId);
+
+  if (!market) {
+    return res.status(404).json({ message: "Market not found." });
+  }
+
+  const payout = market.payoutConfirmations.find((entry) => entry.id === payoutId);
+
+  if (!payout || payout.recipientUserId !== currentUser.id) {
+    return res.status(404).json({ message: "Payout confirmation not found for this user." });
+  }
+
+  if (payout.status !== PAYOUT_CONFIRMATION_STATUS.PENDING_RECIPIENT && payout.status !== PAYOUT_CONFIRMATION_STATUS.DISPUTED) {
+    return res.status(400).json({ message: "This payout is not waiting on your confirmation yet." });
+  }
+
+  const updatedMarket = await prisma.$transaction(async (tx) => {
+    await (tx as any).marketPayoutConfirmation.update({
+      where: { id: payoutId },
+      data: {
+        status: input.received ? PAYOUT_CONFIRMATION_STATUS.CONFIRMED : PAYOUT_CONFIRMATION_STATUS.DISPUTED,
+        recipientRespondedAt: new Date()
+      }
+    });
+
+    await refreshPayoutFinalization(tx, marketId);
+
+    return findDetailedMarketOrThrow(tx, marketId);
+  });
+
+  res.json(serializeMarket(updatedMarket, currentUser.id));
 }));

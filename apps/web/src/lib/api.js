@@ -17,6 +17,12 @@ async function request(path, token, init) {
 export function getCurrentUser(token) {
     return request("/api/me", token);
 }
+export function updateVenmoHandle(token, venmoHandle) {
+    return request("/api/me", token, {
+        method: "PATCH",
+        body: JSON.stringify({ venmoHandle })
+    });
+}
 export function createGroup(token, name) {
     return request("/api/groups", token, {
         method: "POST",
@@ -64,6 +70,17 @@ export function resolveMarket(token, marketId, resolution) {
 export function confirmPosition(token, marketId, positionId) {
     return request(`/api/markets/${marketId}/positions/${positionId}/confirm`, token, {
         method: "POST"
+    });
+}
+export function markPayoutSent(token, marketId, payoutId) {
+    return request(`/api/markets/${marketId}/payouts/${payoutId}/sent`, token, {
+        method: "POST"
+    });
+}
+export function respondToPayout(token, marketId, payoutId, received) {
+    return request(`/api/markets/${marketId}/payouts/${payoutId}/respond`, token, {
+        method: "POST",
+        body: JSON.stringify({ received })
     });
 }
 export function rejectPosition(token, marketId, positionId) {

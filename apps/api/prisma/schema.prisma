@@ -28,12 +28,20 @@ enum PositionStatus {
   CONFIRMED
 }
 
+enum PayoutConfirmationStatus {
+  PENDING_CREATOR
+  PENDING_RECIPIENT
+  DISPUTED
+  CONFIRMED
+}
+
 model User {
   id             String          @id @default(cuid())
   auth0UserId    String          @unique
   email          String          @unique
   displayName    String
   avatarUrl      String?
+  venmoHandle    String?
   balance        Int             @default(0)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -41,6 +49,7 @@ model User {
   createdMarkets Market[]        @relation("CreatedMarkets")
   targetMarkets  Market[]        @relation("TargetMarkets")
   positions      Position[]
+  payouts        MarketPayoutConfirmation[]
 }
 
 model FamilyGroup {
@@ -79,10 +88,12 @@ model Market {
   liquidityPool   Int          @default(100)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
+  payoutsFinalizedAt DateTime?
   group           FamilyGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdBy       User         @relation("CreatedMarkets", fields: [createdByUserId], references: [id], onDelete: Cascade)
   targetUser      User?        @relation("TargetMarkets", fields: [targetUserId], references: [id], onDelete: Cascade)
   positions       Position[]
+  payoutConfirmations MarketPayoutConfirmation[]
 }
 
 model Position {
@@ -99,4 +110,22 @@ model Position {
 
   @@index([marketId])
   @@index([userId])
+}
+
+model MarketPayoutConfirmation {
+  id              String                   @id @default(cuid())
+  marketId        String
+  recipientUserId String
+  amount          Int
+  status          PayoutConfirmationStatus @default(PENDING_CREATOR)
+  creatorMarkedAt DateTime?
+  recipientRespondedAt DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  market          Market                   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  recipient       User                     @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, recipientUserId])
+  @@index([marketId])
+  @@index([recipientUserId])
 }
