@@ -38,6 +38,15 @@ function formatMoney(amount: number) {
   }).format(amount);
 }
 
+function normalizeVenmoHandle(handle: string | null | undefined) {
+  return (handle ?? "").replace(/^@+/, "").trim();
+}
+
+function getVenmoUrl(handle: string | null | undefined) {
+  const normalizedHandle = normalizeVenmoHandle(handle);
+  return normalizedHandle ? `https://venmo.com/u/${normalizedHandle}` : "";
+}
+
 type TradeDraft = {
   side: "YES" | "NO";
   amount: string;
@@ -103,6 +112,7 @@ export default function App() {
   const isGroupSlide = onboardingStep === 2;
   const isPracticeSlide = onboardingStep === 3;
   const tutorialAmountNumber = Number(tutorialDraft.amount || "0");
+  const tutorialVenmoUrl = getVenmoUrl("saakethp");
 
   const tutorialPrompt =
     tutorialHoverTarget === "side"
@@ -177,7 +187,6 @@ export default function App() {
         if (initialGroupId) {
           await refreshMarkets(accessToken, initialGroupId);
         }
-        setStatusMessage("Desk synced. Balances, markets, and payouts are current.");
       } catch (requestError) {
         if (!active) {
           return;
@@ -344,7 +353,7 @@ export default function App() {
     try {
       await updateVenmoHandle(token, venmoHandle);
       await refreshProfile(token);
-      setStatusMessage(`Venmo handle saved as @${venmoHandle.replace(/^@+/, "")}.`);
+      setStatusMessage(`Venmo handle saved as @${normalizeVenmoHandle(venmoHandle)}.`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to save Venmo handle.");
     } finally {
@@ -391,7 +400,7 @@ export default function App() {
       await refreshWorkspace(token, selectedGroupId);
       setStatusMessage(
         Number(draft.amount || "0") > 0
-          ? `Position submitted. Venmo ${formatMoney(Number(draft.amount || "0"))} to ${updatedMarket.venmoRecipient.venmoHandle ? `@${updatedMarket.venmoRecipient.venmoHandle}` : updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
+          ? `Position submitted. Send ${formatMoney(Number(draft.amount || "0"))} using the Venmo link for ${updatedMarket.venmoRecipient.venmoHandle ? `@${normalizeVenmoHandle(updatedMarket.venmoRecipient.venmoHandle)}` : updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
           : "Position removed."
       );
     } catch (requestError) {
@@ -798,15 +807,19 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="market-rail">
-                      <div className="market-rail-card">
-                        <span>Creator</span>
-                        <strong>Jamie</strong>
-                      </div>
-                      <div className="market-rail-card">
-                        <span>Venmo to</span>
-                        <strong>@jamieescrow</strong>
-                      </div>
+                      <div className="market-rail">
+                        <div className="market-rail-card">
+                          <span>Creator</span>
+                          <strong>Jamie</strong>
+                        </div>
+                        <div className="market-rail-card">
+                          <span>Venmo to</span>
+                          <strong>
+                            <a className="venmo-link" href={tutorialVenmoUrl} target="_blank" rel="noreferrer">
+                              @saakethp
+                            </a>
+                          </strong>
+                        </div>
                       <div className="market-rail-card">
                         <span>Mode</span>
                         <strong>Practice only</strong>
@@ -879,7 +892,11 @@ export default function App() {
                       </div>
 
                       <p className="trade-note">
-                        After saving, Venmo {formatMoney(tutorialAmountNumber || 0)} to @jamieescrow so the market creator can escrow the pool.
+                        After saving, send {formatMoney(tutorialAmountNumber || 0)} to{" "}
+                        <a className="venmo-link" href={tutorialVenmoUrl} target="_blank" rel="noreferrer">
+                          @saakethp
+                        </a>{" "}
+                        so the market creator can escrow the pool.
                       </p>
 
                       {tutorialBetPlaced ? (
@@ -973,9 +990,12 @@ export default function App() {
       <section className="dashboard-hero">
         <div>
           <p className="kicker">Trading desk</p>
-          <h1>{user?.name ?? profile?.user.displayName ?? "Family member"}</h1>
+          <h1>Family prediction market</h1>
           <p className="hero-lede">
             Build private calls, shift bankroll between positions, and settle the whole market without spreadsheets.
+          </p>
+          <p className="subtle-copy dashboard-identity">
+            Signed in as {user?.name ?? profile?.user.displayName ?? "Family member"}
           </p>
         </div>
         <div className="hero-meta">
@@ -1007,10 +1027,11 @@ export default function App() {
         </div>
       </section>
 
-      <section className="status-banner">
-        <span>{statusMessage}</span>
-        {error ? <strong>{error}</strong> : null}
-      </section>
+      {error ? (
+        <section className="status-banner">
+          <strong>{error}</strong>
+        </section>
+      ) : null}
 
       <section className="dashboard-grid">
         <aside className="sidebar-stack">
@@ -1227,6 +1248,8 @@ export default function App() {
                   };
                   const canRemove =
                     market.createdBy.id === profile?.user.id || selectedGroup?.role === "ADMIN";
+                  const recipientHandle = normalizeVenmoHandle(market.venmoRecipient.venmoHandle);
+                  const recipientUrl = getVenmoUrl(market.venmoRecipient.venmoHandle);
 
                   return (
                     <article key={market.id} className="market-panel">
@@ -1310,12 +1333,28 @@ export default function App() {
                         </button>
                         {market.status === "OPEN" ? (
                           <p className="trade-note">
-                            After saving, Venmo {formatMoney(Number(draft.amount || "0"))} to {market.venmoRecipient.venmoHandle ? `@${market.venmoRecipient.venmoHandle}` : market.venmoRecipient.displayName} so the market creator can escrow the pool.
+                            After saving, send {formatMoney(Number(draft.amount || "0"))} to{" "}
+                            {recipientUrl ? (
+                              <a className="venmo-link" href={recipientUrl} target="_blank" rel="noreferrer">
+                                @{recipientHandle}
+                              </a>
+                            ) : (
+                              market.venmoRecipient.displayName
+                            )}{" "}
+                            so the market creator can escrow the pool.
                           </p>
                         ) : null}
                         {market.userPendingPosition.totalAmount > 0 ? (
                           <p className="trade-note pending-note">
-                            Pending confirmation: {formatMoney(market.userPendingPosition.totalAmount)}. This will not affect the market until {market.venmoRecipient.venmoHandle ? `@${market.venmoRecipient.venmoHandle}` : market.venmoRecipient.displayName} confirms receipt.
+                            Pending confirmation: {formatMoney(market.userPendingPosition.totalAmount)}. This will not affect the market until{" "}
+                            {recipientUrl ? (
+                              <a className="venmo-link" href={recipientUrl} target="_blank" rel="noreferrer">
+                                @{recipientHandle}
+                              </a>
+                            ) : (
+                              market.venmoRecipient.displayName
+                            )}{" "}
+                            confirms receipt.
                           </p>
                         ) : null}
                       </div>

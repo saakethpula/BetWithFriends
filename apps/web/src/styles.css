@@ -505,6 +505,12 @@ textarea::placeholder {
   max-width: 10ch;
 }
 
+.dashboard-hero h1 {
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  line-height: 1.02;
+  max-width: 16ch;
+}
+
 .hero-lede,
 .market-copy,
 .subtle-copy,
@@ -518,6 +524,11 @@ textarea::placeholder {
   max-width: 60ch;
   font-size: 1.08rem;
   line-height: 1.7;
+}
+
+.dashboard-identity {
+  margin: 0;
+  font-size: 0.95rem;
 }
 
 .kicker,
@@ -824,6 +835,18 @@ textarea::placeholder {
   color: #c7f9ff;
   font-size: 0.92rem;
   line-height: 1.5;
+}
+
+.venmo-link {
+  color: #8bffe5;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(139, 255, 229, 0.35);
+}
+
+.venmo-link:hover {
+  color: #c7fff4;
+  border-bottom-color: rgba(199, 255, 244, 0.7);
 }
 
 .pending-note {
