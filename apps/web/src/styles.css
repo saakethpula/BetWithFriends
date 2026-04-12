@@ -2,20 +2,20 @@
 
 :root {
   color-scheme: dark;
-  --bg: #07111f;
-  --bg-soft: rgba(9, 22, 41, 0.82);
-  --panel: rgba(12, 27, 49, 0.86);
-  --panel-strong: rgba(15, 33, 58, 0.94);
-  --line: rgba(125, 211, 252, 0.12);
-  --line-strong: rgba(125, 211, 252, 0.24);
-  --text: #ecf7ff;
-  --muted: #90a8bf;
-  --teal: #67e8f9;
-  --aqua: #22d3ee;
-  --emerald: #34d399;
-  --coral: #fb7185;
-  --amber: #fbbf24;
-  --shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
+  --bg: #f7f2eb;
+  --bg-soft: rgba(245, 238, 228, 0.84);
+  --panel: rgba(255, 251, 246, 0.82);
+  --panel-strong: rgba(255, 252, 248, 0.94);
+  --line: rgba(126, 111, 93, 0.12);
+  --line-strong: rgba(126, 111, 93, 0.22);
+  --text: #2f261f;
+  --muted: #7d6a59;
+  --teal: #9f8972;
+  --aqua: #b39b83;
+  --emerald: #8fa88a;
+  --coral: #c98d82;
+  --amber: #c7a56a;
+  --shadow: 0 24px 50px rgba(82, 63, 45, 0.08);
 }
 
 * {
@@ -24,9 +24,9 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(34, 211, 238, 0.2), transparent 25%),
-    radial-gradient(circle at top right, rgba(251, 113, 133, 0.18), transparent 28%),
-    linear-gradient(180deg, #07111f 0%, #09172a 48%, #06101d 100%);
+    radial-gradient(circle at top left, rgba(203, 183, 159, 0.28), transparent 30%),
+    radial-gradient(circle at top right, rgba(221, 200, 185, 0.22), transparent 34%),
+    linear-gradient(180deg, #fbf8f3 0%, #f5eee5 52%, #efe6db 100%);
 }
 
 body {
@@ -54,7 +54,7 @@ textarea {
   width: 100%;
   border-radius: 18px;
   border: 1px solid var(--line-strong);
-  background: rgba(4, 13, 24, 0.7);
+  background: rgba(255, 250, 243, 0.9);
   color: var(--text);
   padding: 0.95rem 1rem;
   outline: none;
@@ -64,8 +64,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: rgba(103, 232, 249, 0.55);
-  background: rgba(6, 17, 31, 0.95);
+  border-color: rgba(159, 137, 114, 0.45);
+  background: rgba(255, 253, 249, 0.98);
 }
 
 input::placeholder,
@@ -89,27 +89,24 @@ textarea::placeholder {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image:
-    linear-gradient(rgba(103, 232, 249, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(103, 232, 249, 0.06) 1px, transparent 1px);
-  background-size: 70px 70px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 85%);
+  background:
+    radial-gradient(circle at 15% 18%, rgba(255, 255, 255, 0.5), transparent 18%),
+    radial-gradient(circle at 82% 12%, rgba(228, 211, 194, 0.38), transparent 20%);
+  opacity: 0.6;
 }
 
 .loading-panel,
 .panel,
 .empty-panel,
 .status-banner,
-.dashboard-hero,
 .landing-hero {
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(10px);
 }
 
 .landing-hero,
-.dashboard-hero,
 .onboarding-hero,
 .panel,
 .empty-panel,
@@ -505,12 +502,6 @@ textarea::placeholder {
   max-width: 10ch;
 }
 
-.dashboard-hero h1 {
-  font-size: clamp(1.8rem, 3vw, 2.7rem);
-  line-height: 1.02;
-  max-width: 16ch;
-}
-
 .hero-lede,
 .market-copy,
 .subtle-copy,
@@ -524,11 +515,6 @@ textarea::placeholder {
   max-width: 60ch;
   font-size: 1.08rem;
   line-height: 1.7;
-}
-
-.dashboard-identity {
-  margin: 0;
-  font-size: 0.95rem;
 }
 
 .kicker,
@@ -563,15 +549,15 @@ textarea::placeholder {
 }
 
 .primary-button {
-  color: #03111d;
-  background: linear-gradient(135deg, var(--teal), #8bffe5);
-  box-shadow: 0 16px 36px rgba(34, 211, 238, 0.2);
+  color: #fffaf5;
+  background: linear-gradient(135deg, #b49a7f, #a98a6f);
+  box-shadow: 0 10px 24px rgba(126, 103, 78, 0.14);
 }
 
 .secondary-button {
   color: var(--text);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(34, 211, 238, 0.12));
-  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: linear-gradient(135deg, rgba(217, 205, 191, 0.6), rgba(247, 241, 234, 0.75));
+  border: 1px solid rgba(126, 111, 93, 0.18);
 }
 
 .ghost-button,
@@ -582,43 +568,62 @@ textarea::placeholder {
 }
 
 .yes-outline {
-  border-color: rgba(52, 211, 153, 0.36);
-  color: #a7f3d0;
+  border-color: rgba(143, 168, 138, 0.5);
+  color: #5f7459;
 }
 
 .no-outline {
-  border-color: rgba(251, 113, 133, 0.34);
-  color: #fecdd3;
+  border-color: rgba(201, 141, 130, 0.48);
+  color: #8e5f59;
 }
 
-.dashboard-hero {
-  padding: 1.8rem 2rem;
+.dashboard-toolbar {
+  margin-bottom: 0.9rem;
+}
+
+.toolbar-meta {
   display: flex;
-  justify-content: space-between;
-  gap: 1.25rem;
-  align-items: flex-end;
-  margin-bottom: 1rem;
+  gap: 0.9rem;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
 }
 
-.hero-meta {
-  display: grid;
-  gap: 1rem;
-  justify-items: end;
-}
-
-.hero-controls {
+.toolbar-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
-  justify-content: end;
+  justify-content: flex-end;
 }
 
-.metric-panel {
-  min-width: 240px;
+.toolbar-balance {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
+  padding-right: 0.15rem;
 }
 
-.metric-panel small {
-  color: var(--muted);
+.toolbar-balance strong {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+.toolbar-button {
+  padding: 0.72rem 1rem;
+  border-radius: 16px;
+  color: var(--text);
+  background: rgba(255, 248, 240, 0.75);
+  border: 1px solid rgba(126, 111, 93, 0.14);
+}
+
+.toolbar-button:hover {
+  transform: translateY(-1px);
+}
+
+.toolbar-button-secondary {
+  background: transparent;
+  border-color: rgba(126, 111, 93, 0.12);
 }
 
 .status-banner {
@@ -630,7 +635,7 @@ textarea::placeholder {
 }
 
 .status-banner strong {
-  color: #ffd2da;
+  color: #9a5f56;
 }
 
 .dashboard-grid {
@@ -683,8 +688,8 @@ textarea::placeholder {
 }
 
 .group-pill.active {
-  background: linear-gradient(145deg, rgba(34, 211, 238, 0.28), rgba(14, 116, 144, 0.24));
-  border-color: rgba(103, 232, 249, 0.4);
+  background: linear-gradient(145deg, rgba(225, 214, 202, 0.8), rgba(243, 236, 228, 0.85));
+  border-color: rgba(159, 137, 114, 0.24);
 }
 
 .family-strip,
@@ -718,8 +723,8 @@ textarea::placeholder {
 .compact-metric {
   padding: 1rem;
   border-radius: 22px;
-  background: rgba(3, 10, 20, 0.52);
-  border: 1px solid rgba(125, 211, 252, 0.08);
+  background: rgba(248, 243, 237, 0.86);
+  border: 1px solid rgba(126, 111, 93, 0.08);
   display: grid;
   gap: 0.35rem;
 }
@@ -737,8 +742,8 @@ textarea::placeholder {
 .compact-form {
   padding: 1rem;
   border-radius: 24px;
-  background: rgba(3, 10, 20, 0.42);
-  border: 1px solid rgba(125, 211, 252, 0.1);
+  background: rgba(251, 246, 240, 0.88);
+  border: 1px solid rgba(126, 111, 93, 0.1);
 }
 
 .member-grid {
@@ -789,18 +794,18 @@ textarea::placeholder {
 }
 
 .status-pill.open {
-  color: #a5f3fc;
-  background: rgba(8, 145, 178, 0.16);
+  color: #6b7e67;
+  background: rgba(143, 168, 138, 0.16);
 }
 
 .status-pill.closed {
-  color: #fde68a;
-  background: rgba(245, 158, 11, 0.12);
+  color: #9a7a46;
+  background: rgba(199, 165, 106, 0.14);
 }
 
 .status-pill.resolved {
-  color: #a7f3d0;
-  background: rgba(16, 185, 129, 0.12);
+  color: #5f7459;
+  background: rgba(143, 168, 138, 0.14);
 }
 
 .market-stats,
@@ -811,8 +816,8 @@ textarea::placeholder {
 .market-stats div {
   padding: 0.9rem 1rem;
   border-radius: 22px;
-  background: rgba(3, 10, 20, 0.52);
-  border: 1px solid rgba(125, 211, 252, 0.08);
+  background: rgba(249, 244, 238, 0.92);
+  border: 1px solid rgba(126, 111, 93, 0.08);
   display: grid;
   gap: 0.35rem;
 }
@@ -826,31 +831,31 @@ textarea::placeholder {
   gap: 0.8rem;
   padding: 1rem;
   border-radius: 24px;
-  background: rgba(3, 10, 20, 0.54);
-  border: 1px solid rgba(125, 211, 252, 0.12);
+  background: rgba(250, 246, 241, 0.94);
+  border: 1px solid rgba(126, 111, 93, 0.12);
 }
 
 .trade-note {
   margin: 0;
-  color: #c7f9ff;
+  color: #6f5f50;
   font-size: 0.92rem;
   line-height: 1.5;
 }
 
 .venmo-link {
-  color: #8bffe5;
+  color: #8f7258;
   font-weight: 600;
   text-decoration: none;
-  border-bottom: 1px solid rgba(139, 255, 229, 0.35);
+  border-bottom: 1px solid rgba(143, 114, 88, 0.3);
 }
 
 .venmo-link:hover {
-  color: #c7fff4;
-  border-bottom-color: rgba(199, 255, 244, 0.7);
+  color: #6d5845;
+  border-bottom-color: rgba(109, 88, 69, 0.55);
 }
 
 .pending-note {
-  color: #fde68a;
+  color: #9a7a46;
 }
 
 .settlement-box {
@@ -858,8 +863,8 @@ textarea::placeholder {
   gap: 0.8rem;
   padding: 1rem;
   border-radius: 24px;
-  background: rgba(14, 116, 144, 0.12);
-  border: 1px solid rgba(103, 232, 249, 0.18);
+  background: rgba(244, 237, 228, 0.86);
+  border: 1px solid rgba(159, 137, 114, 0.16);
 }
 
 .settlement-heading {
@@ -881,8 +886,8 @@ textarea::placeholder {
   align-items: center;
   padding: 0.85rem 0.95rem;
   border-radius: 18px;
-  background: rgba(3, 10, 20, 0.42);
-  border: 1px solid rgba(125, 211, 252, 0.1);
+  background: rgba(252, 248, 243, 0.9);
+  border: 1px solid rgba(126, 111, 93, 0.1);
 }
 
 .settlement-row small {
@@ -892,8 +897,8 @@ textarea::placeholder {
 }
 
 .pending-row {
-  border-color: rgba(251, 191, 36, 0.18);
-  background: rgba(52, 38, 5, 0.22);
+  border-color: rgba(199, 165, 106, 0.2);
+  background: rgba(247, 240, 227, 0.92);
 }
 
 .trade-toggle {
@@ -903,15 +908,15 @@ textarea::placeholder {
 }
 
 .toggle-button.active-yes {
-  background: rgba(52, 211, 153, 0.18);
-  border-color: rgba(52, 211, 153, 0.42);
-  color: #a7f3d0;
+  background: rgba(143, 168, 138, 0.18);
+  border-color: rgba(143, 168, 138, 0.38);
+  color: #5f7459;
 }
 
 .toggle-button.active-no {
-  background: rgba(251, 113, 133, 0.16);
-  border-color: rgba(251, 113, 133, 0.4);
-  color: #fecdd3;
+  background: rgba(201, 141, 130, 0.16);
+  border-color: rgba(201, 141, 130, 0.34);
+  color: #8e5f59;
 }
 
 .market-footer {
@@ -971,7 +976,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-hero,
+  .toolbar-meta,
   .panel-heading,
   .board-heading,
   .market-topline,
@@ -981,8 +986,9 @@ button:disabled {
     align-items: stretch;
   }
 
-  .hero-meta {
-    justify-items: stretch;
+  .toolbar-meta {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .slideshow-stage,
@@ -997,7 +1003,6 @@ button:disabled {
   }
 
   .landing-hero,
-  .dashboard-hero,
   .onboarding-hero,
   .panel,
   .market-panel {
@@ -1005,9 +1010,16 @@ button:disabled {
     border-radius: 24px;
   }
 
-  .hero-copy h1,
-  .dashboard-hero h1 {
+  .hero-copy h1 {
     font-size: 2.6rem;
+  }
+
+  .dashboard-toolbar {
+    margin-bottom: 0.75rem;
+  }
+
+  .toolbar-meta {
+    gap: 0.75rem;
   }
 
   .cover-title {

@@ -987,32 +987,22 @@ export default function App() {
 
   return (
     <main className="shell app-shell">
-      <section className="dashboard-hero">
-        <div>
-          <p className="kicker">Trading desk</p>
-          <h1>Family prediction market</h1>
-          <p className="hero-lede">
-            Build private calls, shift bankroll between positions, and settle the whole market without spreadsheets.
-          </p>
-          <p className="subtle-copy dashboard-identity">
-            Signed in as {user?.name ?? profile?.user.displayName ?? "Family member"}
-          </p>
-        </div>
-        <div className="hero-meta">
-          <div className="metric-panel">
-            <span className="metric-label">Available balance: </span>
+      <section className="dashboard-toolbar">
+        <div className="toolbar-meta">
+          <div className="toolbar-balance">
+            <span className="metric-label">Available balance</span>
             <strong>{formatMoney(profile?.user.balance ?? 0)}</strong>
           </div>
-          <div className="hero-controls">
+          <div className="toolbar-actions">
             <button
-              className="secondary-button"
+              className="toolbar-button"
               type="button"
               onClick={() => setSettingsOpen((current) => !current)}
             >
               {settingsOpen ? "Close settings" : "Settings"}
             </button>
             <button
-              className="ghost-button"
+              className="toolbar-button toolbar-button-secondary"
               onClick={() =>
                 logout({
                   logoutParams: {
