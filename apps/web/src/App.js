@@ -40,44 +40,39 @@ export default function App() {
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [groupSetupMode, setGroupSetupMode] = useState("join");
+    const [tutorialDraft, setTutorialDraft] = useState({ side: "YES", amount: DEFAULT_TRADE_AMOUNT });
+    const [tutorialPracticeStep, setTutorialPracticeStep] = useState("pick-side");
+    const [tutorialHoverTarget, setTutorialHoverTarget] = useState(null);
+    const [tutorialBetPlaced, setTutorialBetPlaced] = useState(false);
     const selectedGroup = useMemo(() => profile?.groups.find((group) => group.id === selectedGroupId) ?? null, [profile, selectedGroupId]);
     const visibleMembers = useMemo(() => [...(selectedGroup?.members ?? [])].sort((left, right) => right.balance - left.balance), [selectedGroup]);
     const needsVenmoHandle = !profile?.user.venmoHandle;
     const needsFirstGroup = (profile?.groups.length ?? 0) === 0;
     const onboardingReady = !needsVenmoHandle && !needsFirstGroup;
-    const canOpenTutorialSlides = !needsVenmoHandle && !needsFirstGroup;
-    const tutorialSlides = [
-        {
-            title: "Pick the right group",
-            body: "Every market belongs to one private family group. On the dashboard, switch groups from the left rail so you only see the markets and balances for that circle."
-        },
-        {
-            title: "Create a market",
-            body: "Use the Launch a new thesis panel to choose who the market is about, write the question, add settlement notes, and choose when betting closes."
-        },
-        {
-            title: "Place your position",
-            body: "Open a market, choose YES or NO, enter your stake, and submit. The app immediately tells you who should receive the Venmo payment for escrow."
-        },
-        {
-            title: "Wait for payment confirmation",
-            body: "Your position stays pending until the market creator confirms they received the Venmo. Only then does the stake count toward the live market totals."
-        },
-        {
-            title: "Resolve and settle",
-            body: "When the outcome is known, an admin resolves the market YES or NO. The app calculates payouts and tracks who still needs to confirm they sent money."
-        },
-        {
-            title: "Use settings anytime",
-            body: "Later on, Settings lets you update Venmo, add funds, join another group, or create a fresh group without repeating this onboarding flow."
-        }
-    ];
-    const totalOnboardingSteps = 3 + tutorialSlides.length;
-    const currentTutorialIndex = Math.max(0, onboardingStep - 3);
+    const canStartPractice = onboardingReady;
+    const totalOnboardingSteps = 4;
     const isIntroSlide = onboardingStep === 0;
     const isVenmoSlide = onboardingStep === 1;
     const isGroupSlide = onboardingStep === 2;
-    const isTutorialSlide = onboardingStep >= 3;
+    const isPracticeSlide = onboardingStep === 3;
+    const tutorialAmountNumber = Number(tutorialDraft.amount || "0");
+    const tutorialPrompt = tutorialHoverTarget === "side"
+        ? "Pick the side you want to back. This mirrors the real YES / NO toggle in the live app."
+        : tutorialHoverTarget === "amount"
+            ? "Enter a fake stake here. Nothing in this tutorial moves real money or changes the market."
+            : tutorialHoverTarget === "submit"
+                ? "This is the same action you’ll use later on the real market board to save your position."
+                : tutorialHoverTarget === "payment"
+                    ? "After saving a real position, the app tells you who to Venmo and waits for payment confirmation."
+                    : tutorialPracticeStep === "pick-side"
+                        ? "Step 1: choose YES or NO on this fake market to start the tutorial bet."
+                        : tutorialPracticeStep === "enter-amount"
+                            ? "Step 2: type the amount you want to stake. Try something like 25."
+                            : tutorialPracticeStep === "submit-bet"
+                                ? "Step 3: submit the fake bet so you can see the payment instructions."
+                                : tutorialPracticeStep === "send-venmo"
+                                    ? "Step 4: simulate sending the Venmo so you can see how a pending confirmation works."
+                                    : "Tutorial complete. You’ve walked through the full fake bet flow and can open the real dashboard.";
     async function refreshProfile(accessToken) {
         const nextProfile = await getCurrentUser(accessToken);
         setProfile(nextProfile);
@@ -150,7 +145,7 @@ export default function App() {
         }
         const onboardingKey = `${ONBOARDING_STORAGE_PREFIX}${profile.user.id}`;
         const hasCompletedOnboarding = window.localStorage.getItem(onboardingKey) === "true";
-        if ((!profile.user.venmoHandle || profile.groups.length === 0) && !hasCompletedOnboarding) {
+        if (!hasCompletedOnboarding) {
             setShowOnboarding(true);
         }
     }, [profile]);
@@ -164,6 +159,11 @@ export default function App() {
             setOnboardingStep(3);
         }
     }, [needsFirstGroup, onboardingStep]);
+    useEffect(() => {
+        if (tutorialPracticeStep === "enter-amount" && tutorialAmountNumber > 0) {
+            setTutorialPracticeStep("submit-bet");
+        }
+    }, [tutorialAmountNumber, tutorialPracticeStep]);
     function updateTradeDraft(marketId, patch) {
         setTradeDrafts((currentDrafts) => ({
             ...currentDrafts,
@@ -173,6 +173,31 @@ export default function App() {
                 ...patch
             }
         }));
+    }
+    function handleTutorialSideChange(side) {
+        setTutorialDraft((current) => ({
+            ...current,
+            side
+        }));
+        if (tutorialPracticeStep === "pick-side") {
+            setTutorialPracticeStep("enter-amount");
+        }
+    }
+    function handleTutorialAmountChange(amount) {
+        setTutorialDraft((current) => ({
+            ...current,
+            amount
+        }));
+    }
+    function handleTutorialPlaceBet() {
+        if (tutorialAmountNumber <= 0) {
+            return;
+        }
+        setTutorialBetPlaced(true);
+        setTutorialPracticeStep("send-venmo");
+    }
+    function handleTutorialPaymentSent() {
+        setTutorialPracticeStep("done");
     }
     async function handleCreateGroup(event) {
         event.preventDefault();
@@ -403,7 +428,7 @@ export default function App() {
     if (showOnboarding) {
         const onboardingKey = `${ONBOARDING_STORAGE_PREFIX}${profile.user.id}`;
         const progressCount = onboardingStep + 1;
-        const activeTutorialSlide = tutorialSlides[currentTutorialIndex];
+        const progressPercent = (progressCount / totalOnboardingSteps) * 100;
         return (_jsx("main", { className: "shell app-shell", children: _jsxs("section", { className: "onboarding-shell", children: [_jsxs("article", { className: "onboarding-hero", children: [_jsxs("div", { className: "hero-copy", children: [_jsx("p", { className: "kicker onboarding-kicker", children: "Interactive tutorial" }), _jsx("h1", { children: "Walk through the app one screen at a time." }), _jsx("p", { className: "hero-lede", children: "This onboarding now works like a slideshow. First we set up payouts, then we get you into a group, then we walk through exactly how the market flow works before you land on the dashboard." })] }), _jsxs("div", { className: "onboarding-progress", children: [_jsxs("div", { className: onboardingStep === 0 ? "progress-card active" : "progress-card complete", children: [_jsx("span", { className: "preview-label", children: "Start" }), _jsx("strong", { children: "Tutorial overview" }), _jsx("p", { children: "A clear first screen that explains what is about to happen before any setup fields appear." })] }), _jsxs("div", { className: onboardingStep === 1
                                             ? "progress-card active"
                                             : needsVenmoHandle
@@ -416,27 +441,39 @@ export default function App() {
                                                 ? "progress-card"
                                                 : "progress-card complete", children: [_jsx("span", { className: "preview-label", children: "Step 2" }), _jsx("strong", { children: needsFirstGroup ? "Join or create a group" : "Group connected" }), _jsx("p", { children: needsFirstGroup
                                                     ? "Choose one path on a dedicated screen instead of juggling both forms at once."
-                                                    : `You’re connected to ${profile.groups[0]?.name ?? "your first group"}.` })] }), _jsxs("div", { className: isTutorialSlide
+                                                    : `You’re connected to ${profile.groups[0]?.name ?? "your first group"}.` })] }), _jsxs("div", { className: isPracticeSlide
                                             ? "progress-card active"
-                                            : canOpenTutorialSlides
+                                            : canStartPractice
                                                 ? "progress-card complete"
-                                                : "progress-card", children: [_jsx("span", { className: "preview-label", children: "Step 3" }), _jsx("strong", { children: canOpenTutorialSlides ? "Tutorial slides" : "Finish setup to unlock tutorial" }), _jsx("p", { children: "Learn how to create markets, place positions, confirm payments, and resolve outcomes without guessing." })] })] })] }), _jsxs("section", { className: "status-banner", children: [_jsx("span", { children: statusMessage }), error ? _jsx("strong", { children: error }) : null] }), _jsx("section", { className: "onboarding-grid", children: _jsxs("article", { className: "panel onboarding-slide-panel", children: [_jsxs("div", { className: "panel-heading onboarding-slide-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: isIntroSlide
+                                                : "progress-card", children: [_jsx("span", { className: "preview-label", children: "Step 3" }), _jsx("strong", { children: canStartPractice ? "Live tutorial" : "Finish setup to unlock tutorial" }), _jsx("p", { children: "Practice a fake bet, see the Venmo confirmation pattern, and then unlock the real dashboard." })] })] })] }), _jsxs("section", { className: "status-banner", children: [_jsx("span", { children: statusMessage }), error ? _jsx("strong", { children: error }) : null] }), _jsx("section", { className: "onboarding-grid", children: _jsxs("article", { className: "panel onboarding-slide-panel", children: [_jsxs("div", { className: "panel-heading onboarding-slide-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: isIntroSlide
                                                         ? "Tutorial cover"
                                                         : isVenmoSlide
                                                             ? "Step 1 of 3"
                                                             : isGroupSlide
                                                                 ? "Step 2 of 3"
-                                                                : `Tutorial slide ${currentTutorialIndex + 1} of ${tutorialSlides.length}` }), _jsx("h2", { children: isIntroSlide
+                                                                : "Live practice" }), _jsx("h2", { children: isIntroSlide
                                                         ? "Before you enter the dashboard"
                                                         : isVenmoSlide
                                                             ? "Add the Venmo handle people should pay"
                                                             : isGroupSlide
                                                                 ? "Join a group or create your first one"
-                                                                : activeTutorialSlide.title })] }), _jsxs("span", { className: "subtle-copy", children: ["Screen ", progressCount, " of ", totalOnboardingSteps] })] }), isIntroSlide ? (_jsxs("div", { className: "slideshow-stage tutorial-cover", children: [_jsx("div", { className: "cover-badge", children: "Interactive walkthrough" }), _jsx("p", { className: "cover-title", children: "We\u2019ll set up your account, then show the product flow one step at a time." }), _jsx("p", { className: "cover-copy", children: "You won\u2019t have to scan a long wall of onboarding anymore. Each screen has one job, and the tutorial starts with this dedicated intro so it feels clearly separate from the actual app." }), _jsxs("div", { className: "cover-highlights", children: [_jsxs("div", { className: "cover-highlight", children: [_jsx("strong", { children: "1. Save Venmo" }), _jsx("p", { children: "Make sure everyone knows where to send money for funding and payouts." })] }), _jsxs("div", { className: "cover-highlight", children: [_jsx("strong", { children: "2. Pick your group path" }), _jsx("p", { children: "Use one full screen to either join an existing group or start a new one yourself." })] }), _jsxs("div", { className: "cover-highlight", children: [_jsx("strong", { children: "3. Learn the flow" }), _jsx("p", { children: "Swipe through the market lifecycle before you touch the live dashboard." })] })] })] })) : null, isVenmoSlide ? (_jsxs("div", { className: "slideshow-stage", children: [_jsxs("div", { className: "slide-callout", children: [_jsx("span", { className: "preview-label", children: "Payout setup" }), _jsx("strong", { children: needsVenmoHandle ? "Add your handle to continue" : `Saved as @${profile.user.venmoHandle}` }), _jsx("p", { children: "This step gets payment instructions right anywhere the app asks people to fund or settle a position." })] }), _jsxs("form", { onSubmit: handleSaveVenmoHandle, className: "compact-form form-stack single-step-form", children: [_jsx("span", { className: "subtle-copy", children: "Where should people Venmo you?" }), _jsx("input", { value: venmoHandle, onChange: (event) => setVenmoHandle(event.target.value), placeholder: "@yourhandle", required: true }), _jsx("button", { className: "secondary-button", type: "submit", disabled: busyAction === "venmo", children: needsVenmoHandle ? "Save Venmo handle" : "Update Venmo handle" })] })] })) : null, isGroupSlide ? (_jsxs("div", { className: "slideshow-stage", children: [_jsxs("div", { className: "group-setup-switcher", children: [_jsx("button", { type: "button", className: groupSetupMode === "join" ? "group-setup-pill active" : "group-setup-pill", onClick: () => setGroupSetupMode("join"), children: "Join a group" }), _jsx("button", { type: "button", className: groupSetupMode === "create" ? "group-setup-pill active" : "group-setup-pill", onClick: () => setGroupSetupMode("create"), children: "Create a group" })] }), groupSetupMode === "join" ? (_jsxs("form", { onSubmit: handleJoinGroup, className: "compact-form form-stack single-step-form", children: [_jsx("span", { className: "subtle-copy", children: "Enter the code from your group admin" }), _jsx("input", { value: joinCode, onChange: (event) => setJoinCode(event.target.value.toUpperCase()), placeholder: "Join code", required: true }), _jsx("button", { className: "primary-button", type: "submit", disabled: busyAction === "join-group", children: "Join first group" })] })) : (_jsxs("form", { onSubmit: handleCreateGroup, className: "compact-form form-stack single-step-form", children: [_jsx("span", { className: "subtle-copy", children: "Name the first private group" }), _jsx("input", { value: groupName, onChange: (event) => setGroupName(event.target.value), placeholder: "The Parkers", required: true }), _jsx("button", { className: "ghost-button", type: "submit", disabled: busyAction === "create-group", children: "Create a new group" })] })), _jsxs("div", { className: "slide-callout", children: [_jsx("span", { className: "preview-label", children: "Group setup" }), _jsx("strong", { children: needsFirstGroup
+                                                                : "Try a fake market before using the real app" })] }), _jsxs("span", { className: "subtle-copy", children: ["Screen ", progressCount, " of ", totalOnboardingSteps] })] }), isIntroSlide ? (_jsxs("div", { className: "slideshow-stage tutorial-cover", children: [_jsx("div", { className: "cover-badge", children: "Interactive walkthrough" }), _jsx("p", { className: "cover-title", children: "We\u2019ll set up your account, then show the product flow one step at a time." }), _jsx("p", { className: "cover-copy", children: "You won\u2019t have to scan a long wall of onboarding anymore. Each screen has one job, and the tutorial starts with this dedicated intro so it feels clearly separate from the actual app." }), _jsxs("div", { className: "cover-highlights", children: [_jsxs("div", { className: "cover-highlight", children: [_jsx("strong", { children: "1. Save Venmo" }), _jsx("p", { children: "Make sure everyone knows where to send money for funding and payouts." })] }), _jsxs("div", { className: "cover-highlight", children: [_jsx("strong", { children: "2. Pick your group path" }), _jsx("p", { children: "Use one full screen to either join an existing group or start a new one yourself." })] }), _jsxs("div", { className: "cover-highlight", children: [_jsx("strong", { children: "3. Learn the flow" }), _jsx("p", { children: "Place a fake bet, see the fake Venmo step, and unlock the real dashboard after you practice." })] })] })] })) : null, isVenmoSlide ? (_jsxs("div", { className: "slideshow-stage", children: [_jsxs("div", { className: "slide-callout", children: [_jsx("span", { className: "preview-label", children: "Payout setup" }), _jsx("strong", { children: needsVenmoHandle ? "Add your handle to continue" : `Saved as @${profile.user.venmoHandle}` }), _jsx("p", { children: "This step gets payment instructions right anywhere the app asks people to fund or settle a position." })] }), _jsxs("form", { onSubmit: handleSaveVenmoHandle, className: "compact-form form-stack single-step-form", children: [_jsx("span", { className: "subtle-copy", children: "Where should people Venmo you?" }), _jsx("input", { value: venmoHandle, onChange: (event) => setVenmoHandle(event.target.value), placeholder: "@yourhandle", required: true }), _jsx("button", { className: "secondary-button", type: "submit", disabled: busyAction === "venmo", children: needsVenmoHandle ? "Save Venmo handle" : "Update Venmo handle" })] })] })) : null, isGroupSlide ? (_jsxs("div", { className: "slideshow-stage", children: [_jsxs("div", { className: "group-setup-switcher", children: [_jsx("button", { type: "button", className: groupSetupMode === "join" ? "group-setup-pill active" : "group-setup-pill", onClick: () => setGroupSetupMode("join"), children: "Join a group" }), _jsx("button", { type: "button", className: groupSetupMode === "create" ? "group-setup-pill active" : "group-setup-pill", onClick: () => setGroupSetupMode("create"), children: "Create a group" })] }), groupSetupMode === "join" ? (_jsxs("form", { onSubmit: handleJoinGroup, className: "compact-form form-stack single-step-form", children: [_jsx("span", { className: "subtle-copy", children: "Enter the code from your group admin" }), _jsx("input", { value: joinCode, onChange: (event) => setJoinCode(event.target.value.toUpperCase()), placeholder: "Join code", required: true }), _jsx("button", { className: "primary-button", type: "submit", disabled: busyAction === "join-group", children: "Join first group" })] })) : (_jsxs("form", { onSubmit: handleCreateGroup, className: "compact-form form-stack single-step-form", children: [_jsx("span", { className: "subtle-copy", children: "Name the first private group" }), _jsx("input", { value: groupName, onChange: (event) => setGroupName(event.target.value), placeholder: "The Parkers", required: true }), _jsx("button", { className: "ghost-button", type: "submit", disabled: busyAction === "create-group", children: "Create a new group" })] })), _jsxs("div", { className: "slide-callout", children: [_jsx("span", { className: "preview-label", children: "Group setup" }), _jsx("strong", { children: needsFirstGroup
                                                         ? "Choose one path for your first group"
-                                                        : `Connected to ${profile.groups[0]?.name ?? "your first group"}` }), _jsx("p", { children: "Once this is done, the tutorial slides unlock and you can move through the actual app flow screen by screen." })] })] })) : null, isTutorialSlide ? (_jsxs("div", { className: "slideshow-stage tutorial-stage", children: [_jsx("div", { className: "tutorial-number", children: currentTutorialIndex + 1 }), _jsx("p", { className: "cover-title", children: activeTutorialSlide.title }), _jsx("p", { className: "cover-copy", children: activeTutorialSlide.body })] })) : null, _jsxs("div", { className: "onboarding-footer slideshow-controls", children: [_jsx("button", { className: "ghost-button", type: "button", disabled: onboardingStep === 0, onClick: () => setOnboardingStep((current) => Math.max(0, current - 1)), children: "Previous" }), onboardingStep < totalOnboardingSteps - 1 ? (_jsx("button", { className: "primary-button", type: "button", disabled: (isVenmoSlide && needsVenmoHandle) ||
+                                                        : `Connected to ${profile.groups[0]?.name ?? "your first group"}` }), _jsx("p", { children: "Once this is done, you\u2019ll enter a fake market and practice the real betting flow step by step." })] })] })) : null, isPracticeSlide ? (_jsxs("div", { className: "slideshow-stage tutorial-stage live-tutorial-stage", children: [_jsxs("div", { className: "tutorial-guide-card", children: [_jsx("span", { className: "preview-label", children: "Live tutorial" }), _jsx("strong", { children: tutorialPracticeStep === "done"
+                                                        ? "Practice run complete"
+                                                        : "Try the flow on this fake market" }), _jsx("p", { children: tutorialPrompt })] }), _jsxs("article", { className: "market-panel tutorial-market-panel", children: [_jsxs("div", { className: "market-topline", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Practice market" }), _jsx("h3", { children: "Will the family trip get booked before Friday?" })] }), _jsx("span", { className: "status-pill open", children: "OPEN" })] }), _jsx("p", { className: "market-copy", children: "This is a fake tutorial market. Nothing here touches your real balance, group, or payouts." }), _jsxs("div", { className: "market-stats", children: [_jsxs("div", { children: [_jsx("span", { children: "YES" }), _jsx("strong", { children: "64%" })] }), _jsxs("div", { children: [_jsx("span", { children: "Total pot" }), _jsx("strong", { children: formatMoney(180) })] }), _jsxs("div", { children: [_jsx("span", { children: "Your fake stake" }), _jsx("strong", { children: tutorialBetPlaced ? formatMoney(tutorialAmountNumber) : formatMoney(0) })] }), _jsxs("div", { children: [_jsx("span", { children: "Closes" }), _jsx("strong", { children: "Tomorrow at noon" })] })] }), _jsxs("div", { className: "market-rail", children: [_jsxs("div", { className: "market-rail-card", children: [_jsx("span", { children: "Creator" }), _jsx("strong", { children: "Jamie" })] }), _jsxs("div", { className: "market-rail-card", children: [_jsx("span", { children: "Venmo to" }), _jsx("strong", { children: "@jamieescrow" })] }), _jsxs("div", { className: "market-rail-card", children: [_jsx("span", { children: "Mode" }), _jsx("strong", { children: "Practice only" })] })] }), _jsxs("div", { className: "trade-box tutorial-trade-box", children: [_jsx("div", { className: tutorialPracticeStep === "pick-side"
+                                                                ? "tutorial-focus-ring active"
+                                                                : "tutorial-focus-ring", onMouseEnter: () => setTutorialHoverTarget("side"), onMouseLeave: () => setTutorialHoverTarget(null), children: _jsxs("div", { className: "trade-toggle", children: [_jsx("button", { type: "button", className: tutorialDraft.side === "YES" ? "toggle-button active-yes" : "toggle-button", onClick: () => handleTutorialSideChange("YES"), children: "YES" }), _jsx("button", { type: "button", className: tutorialDraft.side === "NO" ? "toggle-button active-no" : "toggle-button", onClick: () => handleTutorialSideChange("NO"), children: "NO" })] }) }), _jsx("div", { className: tutorialPracticeStep === "enter-amount"
+                                                                ? "tutorial-focus-ring active"
+                                                                : "tutorial-focus-ring", onMouseEnter: () => setTutorialHoverTarget("amount"), onMouseLeave: () => setTutorialHoverTarget(null), children: _jsx("input", { type: "number", min: "0", value: tutorialDraft.amount, onChange: (event) => handleTutorialAmountChange(event.target.value), placeholder: "Stake amount" }) }), _jsx("div", { className: tutorialPracticeStep === "submit-bet"
+                                                                ? "tutorial-focus-ring active"
+                                                                : "tutorial-focus-ring", onMouseEnter: () => setTutorialHoverTarget("submit"), onMouseLeave: () => setTutorialHoverTarget(null), children: _jsx("button", { className: "primary-button", type: "button", disabled: tutorialAmountNumber <= 0 || tutorialBetPlaced, onClick: handleTutorialPlaceBet, children: tutorialBetPlaced ? "Fake bet submitted" : "Place practice bet" }) }), _jsxs("p", { className: "trade-note", children: ["After saving, Venmo ", formatMoney(tutorialAmountNumber || 0), " to @jamieescrow so the market creator can escrow the pool."] }), tutorialBetPlaced ? (_jsxs("div", { className: tutorialPracticeStep === "send-venmo"
+                                                                ? "settlement-box tutorial-focus-ring active"
+                                                                : "settlement-box tutorial-focus-ring", onMouseEnter: () => setTutorialHoverTarget("payment"), onMouseLeave: () => setTutorialHoverTarget(null), children: [_jsxs("div", { className: "settlement-heading", children: [_jsx("span", { className: "kicker", children: "Pending tutorial receipt" }), _jsx("strong", { children: "Fake payment confirmation" })] }), _jsxs("p", { className: "trade-note pending-note", children: ["Practice pending: ", tutorialDraft.side, " for ", formatMoney(tutorialAmountNumber), ". In the real app, this stays pending until the creator confirms they got your Venmo."] }), _jsx("button", { className: "secondary-button tutorial-payment-button", type: "button", disabled: tutorialPracticeStep === "done", onClick: handleTutorialPaymentSent, children: tutorialPracticeStep === "done"
+                                                                        ? "Practice payment confirmed"
+                                                                        : "I sent the practice Venmo" })] })) : null] })] }), tutorialPracticeStep === "done" ? (_jsxs("div", { className: "tutorial-success-banner", children: [_jsx("strong", { children: "You\u2019ve completed the fake bet flow." }), _jsx("p", { children: "The real dashboard uses the same steps: choose a side, enter an amount, save the bet, then follow the Venmo confirmation prompt." })] })) : null] })) : null, _jsxs("div", { className: "onboarding-footer slideshow-controls", children: [_jsx("button", { className: "ghost-button", type: "button", disabled: onboardingStep === 0, onClick: () => setOnboardingStep((current) => Math.max(0, current - 1)), children: "Previous" }), onboardingStep < totalOnboardingSteps - 1 ? (_jsx("button", { className: "primary-button", type: "button", disabled: (isVenmoSlide && needsVenmoHandle) ||
                                                 (isGroupSlide && needsFirstGroup) ||
-                                                (isTutorialSlide && !canOpenTutorialSlides), onClick: () => setOnboardingStep((current) => Math.min(totalOnboardingSteps - 1, current + 1)), children: isIntroSlide ? "Start tutorial" : isGroupSlide ? "Open tutorial slides" : "Next" })) : (_jsx("button", { className: "primary-button", type: "button", disabled: !onboardingReady, onClick: () => {
+                                                (isPracticeSlide && !canStartPractice), onClick: () => setOnboardingStep((current) => Math.min(totalOnboardingSteps - 1, current + 1)), children: isIntroSlide ? "Start tutorial" : isGroupSlide ? "Open live tutorial" : "Next" })) : (_jsx("button", { className: "primary-button", type: "button", disabled: !onboardingReady || tutorialPracticeStep !== "done", onClick: () => {
                                                 window.localStorage.setItem(onboardingKey, "true");
                                                 setShowOnboarding(false);
                                                 setStatusMessage("Setup complete. Your desk is ready.");

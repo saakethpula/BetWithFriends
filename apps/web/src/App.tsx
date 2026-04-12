@@ -73,6 +73,14 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [groupSetupMode, setGroupSetupMode] = useState<"join" | "create">("join");
+  const [tutorialDraft, setTutorialDraft] = useState<TradeDraft>({ side: "YES", amount: DEFAULT_TRADE_AMOUNT });
+  const [tutorialPracticeStep, setTutorialPracticeStep] = useState<
+    "pick-side" | "enter-amount" | "submit-bet" | "send-venmo" | "done"
+  >("pick-side");
+  const [tutorialHoverTarget, setTutorialHoverTarget] = useState<
+    "side" | "amount" | "submit" | "payment" | null
+  >(null);
+  const [tutorialBetPlaced, setTutorialBetPlaced] = useState(false);
 
   const selectedGroup = useMemo(
     () => profile?.groups.find((group) => group.id === selectedGroupId) ?? null,
@@ -88,47 +96,32 @@ export default function App() {
   const needsVenmoHandle = !profile?.user.venmoHandle;
   const needsFirstGroup = (profile?.groups.length ?? 0) === 0;
   const onboardingReady = !needsVenmoHandle && !needsFirstGroup;
-  const canOpenTutorialSlides = !needsVenmoHandle && !needsFirstGroup;
-
-  const tutorialSlides = [
-    {
-      title: "Pick the right group",
-      body:
-        "Every market belongs to one private family group. On the dashboard, switch groups from the left rail so you only see the markets and balances for that circle."
-    },
-    {
-      title: "Create a market",
-      body:
-        "Use the Launch a new thesis panel to choose who the market is about, write the question, add settlement notes, and choose when betting closes."
-    },
-    {
-      title: "Place your position",
-      body:
-        "Open a market, choose YES or NO, enter your stake, and submit. The app immediately tells you who should receive the Venmo payment for escrow."
-    },
-    {
-      title: "Wait for payment confirmation",
-      body:
-        "Your position stays pending until the market creator confirms they received the Venmo. Only then does the stake count toward the live market totals."
-    },
-    {
-      title: "Resolve and settle",
-      body:
-        "When the outcome is known, an admin resolves the market YES or NO. The app calculates payouts and tracks who still needs to confirm they sent money."
-    },
-    {
-      title: "Use settings anytime",
-      body:
-        "Later on, Settings lets you update Venmo, add funds, join another group, or create a fresh group without repeating this onboarding flow."
-    }
-  ] as const;
-
-  const totalOnboardingSteps = 3 + tutorialSlides.length;
-  const currentTutorialIndex = Math.max(0, onboardingStep - 3);
+  const canStartPractice = onboardingReady;
+  const totalOnboardingSteps = 4;
   const isIntroSlide = onboardingStep === 0;
   const isVenmoSlide = onboardingStep === 1;
   const isGroupSlide = onboardingStep === 2;
-  const isTutorialSlide = onboardingStep >= 3;
+  const isPracticeSlide = onboardingStep === 3;
+  const tutorialAmountNumber = Number(tutorialDraft.amount || "0");
+
+  const tutorialPrompt =
+    tutorialHoverTarget === "side"
+      ? "Pick the side you want to back. This mirrors the real YES / NO toggle in the live app."
+      : tutorialHoverTarget === "amount"
+        ? "Enter a fake stake here. Nothing in this tutorial moves real money or changes the market."
+        : tutorialHoverTarget === "submit"
+          ? "This is the same action you’ll use later on the real market board to save your position."
+          : tutorialHoverTarget === "payment"
+            ? "After saving a real position, the app tells you who to Venmo and waits for payment confirmation."
+            : tutorialPracticeStep === "pick-side"
+              ? "Step 1: choose YES or NO on this fake market to start the tutorial bet."
+              : tutorialPracticeStep === "enter-amount"
+                ? "Step 2: type the amount you want to stake. Try something like 25."
+                : tutorialPracticeStep === "submit-bet"
+                  ? "Step 3: submit the fake bet so you can see the payment instructions."
+                  : tutorialPracticeStep === "send-venmo"
+                    ? "Step 4: simulate sending the Venmo so you can see how a pending confirmation works."
+                    : "Tutorial complete. You’ve walked through the full fake bet flow and can open the real dashboard.";
 
   async function refreshProfile(accessToken: string) {
     const nextProfile = await getCurrentUser(accessToken);
@@ -216,7 +209,7 @@ export default function App() {
     const onboardingKey = `${ONBOARDING_STORAGE_PREFIX}${profile.user.id}`;
     const hasCompletedOnboarding = window.localStorage.getItem(onboardingKey) === "true";
 
-    if ((!profile.user.venmoHandle || profile.groups.length === 0) && !hasCompletedOnboarding) {
+    if (!hasCompletedOnboarding) {
       setShowOnboarding(true);
     }
   }, [profile]);
@@ -233,6 +226,12 @@ export default function App() {
     }
   }, [needsFirstGroup, onboardingStep]);
 
+  useEffect(() => {
+    if (tutorialPracticeStep === "enter-amount" && tutorialAmountNumber > 0) {
+      setTutorialPracticeStep("submit-bet");
+    }
+  }, [tutorialAmountNumber, tutorialPracticeStep]);
+
   function updateTradeDraft(marketId: string, patch: Partial<TradeDraft>) {
     setTradeDrafts((currentDrafts) => ({
       ...currentDrafts,
@@ -242,6 +241,36 @@ export default function App() {
         ...patch
       }
     }));
+  }
+
+  function handleTutorialSideChange(side: "YES" | "NO") {
+    setTutorialDraft((current) => ({
+      ...current,
+      side
+    }));
+    if (tutorialPracticeStep === "pick-side") {
+      setTutorialPracticeStep("enter-amount");
+    }
+  }
+
+  function handleTutorialAmountChange(amount: string) {
+    setTutorialDraft((current) => ({
+      ...current,
+      amount
+    }));
+  }
+
+  function handleTutorialPlaceBet() {
+    if (tutorialAmountNumber <= 0) {
+      return;
+    }
+
+    setTutorialBetPlaced(true);
+    setTutorialPracticeStep("send-venmo");
+  }
+
+  function handleTutorialPaymentSent() {
+    setTutorialPracticeStep("done");
   }
 
   async function handleCreateGroup(event: FormEvent<HTMLFormElement>) {
@@ -517,7 +546,7 @@ export default function App() {
   if (showOnboarding) {
     const onboardingKey = `${ONBOARDING_STORAGE_PREFIX}${profile.user.id}`;
     const progressCount = onboardingStep + 1;
-    const activeTutorialSlide = tutorialSlides[currentTutorialIndex];
+    const progressPercent = (progressCount / totalOnboardingSteps) * 100;
 
     return (
       <main className="shell app-shell">
@@ -574,16 +603,16 @@ export default function App() {
               </div>
               <div
                 className={
-                  isTutorialSlide
+                  isPracticeSlide
                     ? "progress-card active"
-                    : canOpenTutorialSlides
+                    : canStartPractice
                       ? "progress-card complete"
                       : "progress-card"
                 }
               >
                 <span className="preview-label">Step 3</span>
-                <strong>{canOpenTutorialSlides ? "Tutorial slides" : "Finish setup to unlock tutorial"}</strong>
-                <p>Learn how to create markets, place positions, confirm payments, and resolve outcomes without guessing.</p>
+                <strong>{canStartPractice ? "Live tutorial" : "Finish setup to unlock tutorial"}</strong>
+                <p>Practice a fake bet, see the Venmo confirmation pattern, and then unlock the real dashboard.</p>
               </div>
             </div>
           </article>
@@ -604,7 +633,7 @@ export default function App() {
                         ? "Step 1 of 3"
                         : isGroupSlide
                           ? "Step 2 of 3"
-                          : `Tutorial slide ${currentTutorialIndex + 1} of ${tutorialSlides.length}`}
+                          : "Live practice"}
                   </p>
                   <h2>
                     {isIntroSlide
@@ -613,7 +642,7 @@ export default function App() {
                         ? "Add the Venmo handle people should pay"
                         : isGroupSlide
                           ? "Join a group or create your first one"
-                          : activeTutorialSlide.title}
+                          : "Try a fake market before using the real app"}
                   </h2>
                 </div>
                 <span className="subtle-copy">Screen {progressCount} of {totalOnboardingSteps}</span>
@@ -637,7 +666,7 @@ export default function App() {
                     </div>
                     <div className="cover-highlight">
                       <strong>3. Learn the flow</strong>
-                      <p>Swipe through the market lifecycle before you touch the live dashboard.</p>
+                      <p>Place a fake bet, see the fake Venmo step, and unlock the real dashboard after you practice.</p>
                     </div>
                   </div>
                 </div>
@@ -720,16 +749,177 @@ export default function App() {
                         ? "Choose one path for your first group"
                         : `Connected to ${profile.groups[0]?.name ?? "your first group"}`}
                     </strong>
-                    <p>Once this is done, the tutorial slides unlock and you can move through the actual app flow screen by screen.</p>
+                    <p>Once this is done, you’ll enter a fake market and practice the real betting flow step by step.</p>
                   </div>
                 </div>
               ) : null}
 
-              {isTutorialSlide ? (
-                <div className="slideshow-stage tutorial-stage">
-                  <div className="tutorial-number">{currentTutorialIndex + 1}</div>
-                  <p className="cover-title">{activeTutorialSlide.title}</p>
-                  <p className="cover-copy">{activeTutorialSlide.body}</p>
+              {isPracticeSlide ? (
+                <div className="slideshow-stage tutorial-stage live-tutorial-stage">
+                  <div className="tutorial-guide-card">
+                    <span className="preview-label">Live tutorial</span>
+                    <strong>
+                      {tutorialPracticeStep === "done"
+                        ? "Practice run complete"
+                        : "Try the flow on this fake market"}
+                    </strong>
+                    <p>{tutorialPrompt}</p>
+                  </div>
+
+                  <article className="market-panel tutorial-market-panel">
+                    <div className="market-topline">
+                      <div>
+                        <p className="kicker">Practice market</p>
+                        <h3>Will the family trip get booked before Friday?</h3>
+                      </div>
+                      <span className="status-pill open">OPEN</span>
+                    </div>
+
+                    <p className="market-copy">
+                      This is a fake tutorial market. Nothing here touches your real balance, group, or payouts.
+                    </p>
+
+                    <div className="market-stats">
+                      <div>
+                        <span>YES</span>
+                        <strong>64%</strong>
+                      </div>
+                      <div>
+                        <span>Total pot</span>
+                        <strong>{formatMoney(180)}</strong>
+                      </div>
+                      <div>
+                        <span>Your fake stake</span>
+                        <strong>{tutorialBetPlaced ? formatMoney(tutorialAmountNumber) : formatMoney(0)}</strong>
+                      </div>
+                      <div>
+                        <span>Closes</span>
+                        <strong>Tomorrow at noon</strong>
+                      </div>
+                    </div>
+
+                    <div className="market-rail">
+                      <div className="market-rail-card">
+                        <span>Creator</span>
+                        <strong>Jamie</strong>
+                      </div>
+                      <div className="market-rail-card">
+                        <span>Venmo to</span>
+                        <strong>@jamieescrow</strong>
+                      </div>
+                      <div className="market-rail-card">
+                        <span>Mode</span>
+                        <strong>Practice only</strong>
+                      </div>
+                    </div>
+
+                    <div className="trade-box tutorial-trade-box">
+                      <div
+                        className={
+                          tutorialPracticeStep === "pick-side"
+                            ? "tutorial-focus-ring active"
+                            : "tutorial-focus-ring"
+                        }
+                        onMouseEnter={() => setTutorialHoverTarget("side")}
+                        onMouseLeave={() => setTutorialHoverTarget(null)}
+                      >
+                        <div className="trade-toggle">
+                          <button
+                            type="button"
+                            className={tutorialDraft.side === "YES" ? "toggle-button active-yes" : "toggle-button"}
+                            onClick={() => handleTutorialSideChange("YES")}
+                          >
+                            YES
+                          </button>
+                          <button
+                            type="button"
+                            className={tutorialDraft.side === "NO" ? "toggle-button active-no" : "toggle-button"}
+                            onClick={() => handleTutorialSideChange("NO")}
+                          >
+                            NO
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        className={
+                          tutorialPracticeStep === "enter-amount"
+                            ? "tutorial-focus-ring active"
+                            : "tutorial-focus-ring"
+                        }
+                        onMouseEnter={() => setTutorialHoverTarget("amount")}
+                        onMouseLeave={() => setTutorialHoverTarget(null)}
+                      >
+                        <input
+                          type="number"
+                          min="0"
+                          value={tutorialDraft.amount}
+                          onChange={(event) => handleTutorialAmountChange(event.target.value)}
+                          placeholder="Stake amount"
+                        />
+                      </div>
+
+                      <div
+                        className={
+                          tutorialPracticeStep === "submit-bet"
+                            ? "tutorial-focus-ring active"
+                            : "tutorial-focus-ring"
+                        }
+                        onMouseEnter={() => setTutorialHoverTarget("submit")}
+                        onMouseLeave={() => setTutorialHoverTarget(null)}
+                      >
+                        <button
+                          className="primary-button"
+                          type="button"
+                          disabled={tutorialAmountNumber <= 0 || tutorialBetPlaced}
+                          onClick={handleTutorialPlaceBet}
+                        >
+                          {tutorialBetPlaced ? "Fake bet submitted" : "Place practice bet"}
+                        </button>
+                      </div>
+
+                      <p className="trade-note">
+                        After saving, Venmo {formatMoney(tutorialAmountNumber || 0)} to @jamieescrow so the market creator can escrow the pool.
+                      </p>
+
+                      {tutorialBetPlaced ? (
+                        <div
+                          className={
+                            tutorialPracticeStep === "send-venmo"
+                              ? "settlement-box tutorial-focus-ring active"
+                              : "settlement-box tutorial-focus-ring"
+                          }
+                          onMouseEnter={() => setTutorialHoverTarget("payment")}
+                          onMouseLeave={() => setTutorialHoverTarget(null)}
+                        >
+                          <div className="settlement-heading">
+                            <span className="kicker">Pending tutorial receipt</span>
+                            <strong>Fake payment confirmation</strong>
+                          </div>
+                          <p className="trade-note pending-note">
+                            Practice pending: {tutorialDraft.side} for {formatMoney(tutorialAmountNumber)}. In the real app, this stays pending until the creator confirms they got your Venmo.
+                          </p>
+                          <button
+                            className="secondary-button tutorial-payment-button"
+                            type="button"
+                            disabled={tutorialPracticeStep === "done"}
+                            onClick={handleTutorialPaymentSent}
+                          >
+                            {tutorialPracticeStep === "done"
+                              ? "Practice payment confirmed"
+                              : "I sent the practice Venmo"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+
+                  {tutorialPracticeStep === "done" ? (
+                    <div className="tutorial-success-banner">
+                      <strong>You’ve completed the fake bet flow.</strong>
+                      <p>The real dashboard uses the same steps: choose a side, enter an amount, save the bet, then follow the Venmo confirmation prompt.</p>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -750,17 +940,17 @@ export default function App() {
                     disabled={
                       (isVenmoSlide && needsVenmoHandle) ||
                       (isGroupSlide && needsFirstGroup) ||
-                      (isTutorialSlide && !canOpenTutorialSlides)
+                      (isPracticeSlide && !canStartPractice)
                     }
                     onClick={() => setOnboardingStep((current) => Math.min(totalOnboardingSteps - 1, current + 1))}
                   >
-                    {isIntroSlide ? "Start tutorial" : isGroupSlide ? "Open tutorial slides" : "Next"}
+                    {isIntroSlide ? "Start tutorial" : isGroupSlide ? "Open live tutorial" : "Next"}
                   </button>
                 ) : (
                   <button
                     className="primary-button"
                     type="button"
-                    disabled={!onboardingReady}
+                    disabled={!onboardingReady || tutorialPracticeStep !== "done"}
                     onClick={() => {
                       window.localStorage.setItem(onboardingKey, "true");
                       setShowOnboarding(false);
