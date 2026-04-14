@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import {
+  calculateNetResults,
   calculateMarketSummary,
   calculateResolutionPayouts,
   calculateUserPosition,
@@ -342,29 +343,11 @@ marketsRouter.put("/:marketId/position", asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "This market is not open for trading." });
   }
 
-  const currentPositionAmount = market.positions
-    .filter((position) => position.userId === currentUser.id)
-    .reduce((total, position) => total + position.amount, 0);
-  const spendableBalance = currentUser.balance + currentPositionAmount;
-
-  if (input.amount > spendableBalance) {
-    return res.status(400).json({
-      message: "You do not have enough balance for that position."
-    });
-  }
-
   const updatedMarket = await prisma.$transaction(async (tx) => {
     await tx.position.deleteMany({
       where: {
         marketId,
         userId: currentUser.id
-      }
-    });
-
-    await tx.user.update({
-      where: { id: currentUser.id },
-      data: {
-        balance: spendableBalance - input.amount
       }
     });
 
@@ -444,15 +427,6 @@ marketsRouter.delete("/:marketId/positions/:positionId", asyncHandler(async (req
   }
 
   const updatedMarket = await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: position.userId },
-      data: {
-        balance: {
-          increment: position.amount
-        }
-      }
-    });
-
     await tx.position.delete({
       where: { id: positionId }
     });
@@ -507,13 +481,18 @@ marketsRouter.post("/:marketId/resolve", asyncHandler(async (req, res) => {
 
   const confirmedPositions = filterConfirmedPositions(market.positions);
   const payouts = calculateResolutionPayouts(confirmedPositions, input.resolution);
+  const netResults = calculateNetResults(confirmedPositions, input.resolution);
   const updated = await prisma.$transaction(async (tx) => {
-    for (const [userId, payout] of payouts.entries()) {
+    for (const [userId, netResult] of netResults.entries()) {
+      if (netResult === 0) {
+        continue;
+      }
+
       await tx.user.update({
         where: { id: userId },
         data: {
           balance: {
-            increment: payout
+            increment: netResult
           }
         }
       });
@@ -586,24 +565,7 @@ marketsRouter.delete("/:marketId", asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Resolved markets cannot be removed." });
   }
 
-  const refunds = new Map<string, number>();
-
-  for (const position of market.positions) {
-    refunds.set(position.userId, (refunds.get(position.userId) ?? 0) + position.amount);
-  }
-
   await prisma.$transaction(async (tx) => {
-    for (const [userId, amount] of refunds.entries()) {
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          balance: {
-            increment: amount
-          }
-        }
-      });
-    }
-
     await tx.market.delete({
       where: { id: marketId }
     });

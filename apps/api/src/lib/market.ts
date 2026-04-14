@@ -107,3 +107,21 @@ export function calculateResolutionPayouts(
 
   return payouts;
 }
+
+export function calculateNetResults(
+  positions: PositionLike[],
+  resolution: boolean | null | undefined
+) {
+  const payouts = calculateResolutionPayouts(positions, resolution);
+  const netResults = new Map<string, number>();
+
+  for (const position of positions) {
+    netResults.set(position.userId, (netResults.get(position.userId) ?? 0) - position.amount);
+  }
+
+  for (const [userId, payout] of payouts.entries()) {
+    netResults.set(userId, (netResults.get(userId) ?? 0) + payout);
+  }
+
+  return netResults;
+}

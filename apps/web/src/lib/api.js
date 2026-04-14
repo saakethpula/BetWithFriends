@@ -29,17 +29,11 @@ export function createGroup(token, name) {
         body: JSON.stringify({ name })
     });
 }
-export function createGroupWithBalance(token, payload) {
-    return createGroup(token, payload.name);
-}
 export function joinGroup(token, joinCode) {
     return request("/api/groups/join", token, {
         method: "POST",
         body: JSON.stringify({ joinCode })
     });
-}
-export function joinGroupWithBalance(token, payload) {
-    return joinGroup(token, payload.joinCode);
 }
 export function getMarkets(token, groupId) {
     return request(`/api/markets?groupId=${groupId}`, token);
@@ -88,10 +82,3 @@ export function rejectPosition(token, marketId, positionId) {
         method: "DELETE"
     });
 }
-export function addGroupBalance(token, groupId, amount) {
-    return request(`/api/groups/${groupId}/balance`, token, {
-        method: "PATCH",
-        body: JSON.stringify({ amount })
-    });
-}
-export const addUserBalance = addGroupBalance;

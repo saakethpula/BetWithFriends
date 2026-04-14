@@ -1,14 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import {
-  addUserBalance,
   confirmPosition,
-  createGroupWithBalance,
+  createGroup,
   createMarket,
   deleteMarket,
   getCurrentUser,
   getMarkets,
-  joinGroupWithBalance,
+  joinGroup,
   markPayoutSent,
   rejectPosition,
   respondToPayout,
@@ -36,6 +35,14 @@ function formatMoney(amount: number) {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(amount);
+}
+
+function formatSignedMoney(amount: number) {
+  if (amount === 0) {
+    return formatMoney(0);
+  }
+
+  return `${amount > 0 ? "+" : "-"}${formatMoney(Math.abs(amount))}`;
 }
 
 function normalizeVenmoHandle(handle: string | null | undefined) {
@@ -69,7 +76,6 @@ export default function App() {
   const [tradeDrafts, setTradeDrafts] = useState<Record<string, TradeDraft>>({});
   const [groupName, setGroupName] = useState("");
   const [joinCode, setJoinCode] = useState("");
-  const [topUpAmount, setTopUpAmount] = useState("100");
   const [venmoHandle, setVenmoHandle] = useState("");
   const [question, setQuestion] = useState("");
   const [description, setDescription] = useState("");
@@ -288,10 +294,7 @@ export default function App() {
     setBusyAction("create-group");
 
     try {
-      const group = await createGroupWithBalance(token, {
-        name: groupName,
-        startingBalance: 0
-      });
+      const group = await createGroup(token, groupName);
       setSelectedGroupId(group.id);
       setGroupName("");
       await refreshWorkspace(token, group.id);
@@ -309,37 +312,13 @@ export default function App() {
     setBusyAction("join-group");
 
     try {
-      const response = await joinGroupWithBalance(token, {
-        joinCode,
-        startingBalance: 0
-      });
+      const response = await joinGroup(token, joinCode);
       setSelectedGroupId(response.groupId);
       setJoinCode("");
       await refreshWorkspace(token, response.groupId);
       setStatusMessage("Joined the group.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to join group.");
-    } finally {
-      setBusyAction("");
-    }
-  }
-
-  async function handleAddFunds(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedGroupId) {
-      return;
-    }
-
-    setError("");
-    setBusyAction("top-up");
-
-    try {
-      await addUserBalance(token, selectedGroupId, Number(topUpAmount));
-      await refreshProfile(token);
-      setTopUpAmount("100");
-      setStatusMessage("Your balance was updated.");
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to add balance.");
     } finally {
       setBusyAction("");
     }
@@ -432,7 +411,7 @@ export default function App() {
     try {
       await rejectPosition(token, marketId, positionId);
       await refreshWorkspace(token, selectedGroupId);
-      setStatusMessage("Pending position rejected and funds returned.");
+      setStatusMessage("Pending position rejected.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to reject payment.");
     } finally {
@@ -447,7 +426,7 @@ export default function App() {
     try {
       await resolveMarket(token, marketId, resolution);
       await refreshWorkspace(token, selectedGroupId);
-      setStatusMessage("Market resolved and balances settled.");
+      setStatusMessage("Market resolved and win/loss totals updated.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to resolve market.");
     } finally {
@@ -516,14 +495,14 @@ export default function App() {
             <p className="kicker">Family Prediction Market</p>
             <h1>Private forecasting with sharper stakes and cleaner secrets.</h1>
             <p className="hero-lede">
-              Spin up hidden markets, manage family bankrolls, and settle results automatically in a dashboard that feels more like a modern trading desk than a school project.
+              Spin up hidden markets, track family predictions, and settle results automatically in a dashboard that feels more like a modern trading desk than a school project.
             </p>
             <div className="hero-actions">
               <button className="primary-button" onClick={() => void loginWithRedirect()}>
                 Enter the market
               </button>
               <div className="hero-note">
-                Hidden from the subject, visible to the family, settled by real balances.
+                Hidden from the subject, visible to the family, settled through real payment tracking.
               </div>
             </div>
           </div>
@@ -534,9 +513,9 @@ export default function App() {
               <p>Will Jordan finally announce the move before July?</p>
             </div>
             <div className="preview-card">
-              <span className="preview-label">Balance engine</span>
-              <strong>{formatMoney(1240)}</strong>
-              <p>Track available cash, committed stakes, and automatic winner payouts.</p>
+              <span className="preview-label">Win / loss tracker</span>
+              <strong>+{formatMoney(1240)}</strong>
+              <p>Track how much each person is up or down after markets resolve.</p>
             </div>
           </div>
         </section>
@@ -785,7 +764,7 @@ export default function App() {
                     </div>
 
                     <p className="market-copy">
-                      This is a fake tutorial market. Nothing here touches your real balance, group, or payouts.
+                      This is a fake tutorial market. Nothing here touches your real group, payments, or payouts.
                     </p>
 
                     <div className="market-stats">
@@ -990,8 +969,8 @@ export default function App() {
       <section className="dashboard-toolbar">
         <div className="toolbar-meta">
           <div className="toolbar-balance">
-            <span className="metric-label">Available balance</span>
-            <strong>{formatMoney(profile?.user.balance ?? 0)}</strong>
+            <span className="metric-label">Net won / lost</span>
+            <strong>{formatSignedMoney(profile?.user.balance ?? 0)}</strong>
           </div>
           <div className="toolbar-actions">
             <button
@@ -1066,29 +1045,10 @@ export default function App() {
               <div className="panel-heading">
                 <div>
                   <p className="kicker">Settings</p>
-                  <h2>Groups and bankroll</h2>
+                  <h2>Groups and payments</h2>
                 </div>
               </div>
               <div className="settings-grid">
-                <form onSubmit={handleAddFunds} className="form-stack compact-form">
-                  <span className="subtle-copy">Add funds to your personal balance</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={topUpAmount}
-                    onChange={(event) => setTopUpAmount(event.target.value)}
-                    placeholder="Amount"
-                    required
-                  />
-                  <button
-                    className="secondary-button"
-                    type="submit"
-                    disabled={!selectedGroupId || busyAction === "top-up"}
-                  >
-                    Add to my balance
-                  </button>
-                </form>
-
                 <form onSubmit={handleSaveVenmoHandle} className="form-stack compact-form">
                   <span className="subtle-copy">Your Venmo handle for payment instructions</span>
                   <input
@@ -1135,11 +1095,11 @@ export default function App() {
             </article>
           ) : null}
 
-          {/* <article className="panel">
+          <article className="panel">
             <div className="panel-heading">
               <div>
                 <p className="kicker">Members</p>
-                <h2>Bankroll leaderboard</h2>
+                <h2>Win / loss board</h2>
               </div>
             </div>
             <div className="member-grid sidebar-members">
@@ -1149,11 +1109,11 @@ export default function App() {
                     <strong>{member.displayName}</strong>
                     <span>{member.role}</span>
                   </div>
-                  <strong>{formatMoney(member.balance)}</strong>
+                  <strong>{formatSignedMoney(member.balance)}</strong>
                 </div>
               ))}
             </div>
-          </article> */}
+          </article>
         </aside>
 
         <section className="main-stack">

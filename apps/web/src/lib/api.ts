@@ -163,25 +163,11 @@ export function createGroup(token: string, name: string) {
   });
 }
 
-export function createGroupWithBalance(
-  token: string,
-  payload: { name: string; startingBalance: number }
-) {
-  return createGroup(token, payload.name);
-}
-
 export function joinGroup(token: string, joinCode: string) {
   return request<{ joined: boolean; groupId: string }>("/api/groups/join", token, {
     method: "POST",
     body: JSON.stringify({ joinCode })
   });
-}
-
-export function joinGroupWithBalance(
-  token: string,
-  payload: { joinCode: string; startingBalance: number }
-) {
-  return joinGroup(token, payload.joinCode);
 }
 
 export function getMarkets(token: string, groupId: string) {
@@ -257,12 +243,3 @@ export function rejectPosition(token: string, marketId: string, positionId: stri
     method: "DELETE"
   });
 }
-
-export function addGroupBalance(token: string, groupId: string, amount: number) {
-  return request<{ balance: number }>(`/api/groups/${groupId}/balance`, token, {
-    method: "PATCH",
-    body: JSON.stringify({ amount })
-  });
-}
-
-export const addUserBalance = addGroupBalance;
