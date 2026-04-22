@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap");
 
 :root {
   color-scheme: dark;
@@ -31,7 +31,7 @@ html {
 
 body {
   margin: 0;
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: "Montserrat", sans-serif;
   color: var(--text);
   background: transparent;
 }
@@ -246,7 +246,7 @@ textarea::placeholder {
 }
 
 .tutorial-step strong {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
 }
 
 .tutorial-number {
@@ -255,7 +255,7 @@ textarea::placeholder {
   display: grid;
   place-items: center;
   color: #4b3524;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
   font-weight: 700;
   background: linear-gradient(135deg, rgba(230, 214, 196, 0.96), rgba(247, 239, 231, 0.96));
 }
@@ -307,7 +307,7 @@ textarea::placeholder {
 .cover-title {
   margin: 0;
   max-width: 18ch;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
   font-size: clamp(2rem, 4vw, 3.5rem);
   line-height: 1.05;
 }
@@ -390,7 +390,7 @@ textarea::placeholder {
 
 .tutorial-guide-card strong,
 .tutorial-success-banner strong {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
 }
 
 .tutorial-guide-card p,
@@ -486,7 +486,7 @@ textarea::placeholder {
 .market-stats strong,
 .market-rail-card strong,
 .member-card strong {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
 }
 
 .hero-copy h1,
@@ -494,7 +494,7 @@ textarea::placeholder {
 .panel h2,
 .market-panel h3,
 .empty-panel h3 {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
   letter-spacing: -0.04em;
   margin: 0;
 }
@@ -608,7 +608,7 @@ textarea::placeholder {
 }
 
 .toolbar-balance strong {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
   font-size: 1.15rem;
   letter-spacing: -0.03em;
 }
@@ -729,7 +729,7 @@ textarea::placeholder {
 
 .group-pill strong,
 .group-pill span {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
 }
 
 .group-pill small {
@@ -769,6 +769,24 @@ textarea::placeholder {
   min-width: 0;
 }
 
+.invite-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 22px;
+  background: rgba(248, 243, 237, 0.86);
+  border: 1px solid rgba(126, 111, 93, 0.08);
+}
+
+.invite-card strong {
+  font-family: "Montserrat", sans-serif;
+}
+
+.invite-link-copy {
+  margin: 0;
+  word-break: break-word;
+}
+
 .compact-metric {
   padding: 1rem;
   border-radius: 22px;
@@ -779,7 +797,7 @@ textarea::placeholder {
 }
 
 .compact-metric strong {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Montserrat", sans-serif;
 }
 
 .settings-grid {

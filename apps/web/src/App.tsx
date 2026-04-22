@@ -21,6 +21,8 @@ import {
 const DEFAULT_TRADE_AMOUNT = "5";
 const GENERAL_MARKET_VALUE = "GENERAL";
 const ONBOARDING_STORAGE_PREFIX = "first-steps-complete:";
+const REFERRAL_PARAM_KEYS = ["groupCode", "joinCode", "code"];
+const AUTO_REFRESH_INTERVAL_MS = 2000;
 
 function tomorrowAtNoon() {
   const date = new Date();
@@ -54,6 +56,48 @@ function getVenmoUrl(handle: string | null | undefined) {
   return normalizedHandle ? `https://venmo.com/u/${normalizedHandle}` : "";
 }
 
+function getReferralJoinCodeFromUrl() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+
+  for (const key of REFERRAL_PARAM_KEYS) {
+    const value = searchParams.get(key)?.trim();
+
+    if (value) {
+      return value.toUpperCase();
+    }
+  }
+
+  return "";
+}
+
+function clearReferralJoinCodeFromUrl() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const nextUrl = new URL(window.location.href);
+
+  for (const key of REFERRAL_PARAM_KEYS) {
+    nextUrl.searchParams.delete(key);
+  }
+
+  window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+}
+
+function buildGroupInviteUrl(joinCode: string) {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const inviteUrl = new URL(window.location.origin + window.location.pathname);
+  inviteUrl.searchParams.set("groupCode", joinCode);
+  return inviteUrl.toString();
+}
+
 type TradeDraft = {
   side: "YES" | "NO";
   amount: string;
@@ -76,6 +120,8 @@ export default function App() {
   const [tradeDrafts, setTradeDrafts] = useState<Record<string, TradeDraft>>({});
   const [groupName, setGroupName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [referralJoinCode, setReferralJoinCode] = useState(() => getReferralJoinCodeFromUrl());
+  const [hasAttemptedReferralJoin, setHasAttemptedReferralJoin] = useState(false);
   const [venmoHandle, setVenmoHandle] = useState("");
   const [question, setQuestion] = useState("");
   const [description, setDescription] = useState("");
@@ -119,6 +165,7 @@ export default function App() {
   const isPracticeSlide = onboardingStep === 3;
   const tutorialAmountNumber = Number(tutorialDraft.amount || "0");
   const tutorialVenmoUrl = getVenmoUrl("saakethp");
+  const selectedGroupInviteUrl = selectedGroup ? buildGroupInviteUrl(selectedGroup.joinCode) : "";
 
   const tutorialPrompt =
     tutorialHoverTarget === "side"
@@ -172,6 +219,22 @@ export default function App() {
     await Promise.all([refreshProfile(accessToken), refreshMarkets(accessToken, groupId)]);
   }
 
+  async function copyInviteLink(joinCodeToShare: string) {
+    const inviteUrl = buildGroupInviteUrl(joinCodeToShare);
+
+    if (!inviteUrl) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setStatusMessage("Invite link copied.");
+      setError("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to copy invite link.");
+    }
+  }
+
   useEffect(() => {
     if (!isAuthenticated) {
       return;
@@ -217,6 +280,59 @@ export default function App() {
   }, [selectedGroupId, token]);
 
   useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+    let refreshing = false;
+
+    const refreshLiveData = async () => {
+      if (!active || refreshing || document.visibilityState === "hidden") {
+        return;
+      }
+
+      refreshing = true;
+
+      try {
+        const nextProfile = await refreshProfile(token);
+        if (!active) {
+          return;
+        }
+
+        if (!selectedGroupId && nextProfile.groups[0]?.id) {
+          setSelectedGroupId(nextProfile.groups[0].id);
+        } else if (selectedGroupId && !nextProfile.groups.some((group) => group.id === selectedGroupId)) {
+          setSelectedGroupId(nextProfile.groups[0]?.id ?? "");
+        }
+
+        if (selectedGroupId) {
+          await refreshMarkets(token, selectedGroupId);
+        }
+
+        setError("");
+      } catch (requestError) {
+        if (!active) {
+          return;
+        }
+
+        setError(requestError instanceof Error ? requestError.message : "Failed to refresh live data.");
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshLiveData();
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [selectedGroupId, token]);
+
+  useEffect(() => {
     if (!profile) {
       return;
     }
@@ -228,6 +344,50 @@ export default function App() {
       setShowOnboarding(true);
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (!referralJoinCode) {
+      return;
+    }
+
+    setJoinCode(referralJoinCode);
+    setGroupSetupMode("join");
+  }, [referralJoinCode]);
+
+  useEffect(() => {
+    if (!token || !profile || !referralJoinCode || hasAttemptedReferralJoin) {
+      return;
+    }
+
+    const existingGroup = profile.groups.find((group) => group.joinCode === referralJoinCode);
+    if (existingGroup) {
+      setSelectedGroupId(existingGroup.id);
+      setReferralJoinCode("");
+      clearReferralJoinCodeFromUrl();
+      setStatusMessage(`Invite link opened for ${existingGroup.name}.`);
+      return;
+    }
+
+    setHasAttemptedReferralJoin(true);
+    setBusyAction("join-group");
+    setError("");
+
+    void (async () => {
+      try {
+        const response = await joinGroup(token, referralJoinCode);
+        setSelectedGroupId(response.groupId);
+        setJoinCode("");
+        setReferralJoinCode("");
+        clearReferralJoinCodeFromUrl();
+        await refreshWorkspace(token, response.groupId);
+        setStatusMessage("Joined the group from the invite link.");
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "Failed to join group.");
+      } finally {
+        setBusyAction("");
+      }
+    })();
+  }, [hasAttemptedReferralJoin, profile, referralJoinCode, token]);
 
   useEffect(() => {
     if (onboardingStep === 1 && !needsVenmoHandle) {
@@ -315,6 +475,8 @@ export default function App() {
       const response = await joinGroup(token, joinCode);
       setSelectedGroupId(response.groupId);
       setJoinCode("");
+      setReferralJoinCode("");
+      clearReferralJoinCodeFromUrl();
       await refreshWorkspace(token, response.groupId);
       setStatusMessage("Joined the group.");
     } catch (requestError) {
@@ -498,7 +660,16 @@ export default function App() {
               Spin up hidden markets, track family predictions, and settle results automatically in a dashboard that feels more like a modern trading desk than a school project.
             </p>
             <div className="hero-actions">
-              <button className="primary-button" onClick={() => void loginWithRedirect()}>
+              <button
+                className="primary-button"
+                onClick={() =>
+                  void loginWithRedirect({
+                    appState: {
+                      returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`
+                    }
+                  })
+                }
+              >
                 Enter the market
               </button>
               <div className="hero-note">
@@ -704,7 +875,11 @@ export default function App() {
 
                   {groupSetupMode === "join" ? (
                     <form onSubmit={handleJoinGroup} className="compact-form form-stack single-step-form">
-                      <span className="subtle-copy">Enter the code from your group admin</span>
+                      <span className="subtle-copy">
+                        {referralJoinCode
+                          ? "Invite link detected. Review the code below or join right away."
+                          : "Enter the code from your group admin"}
+                      </span>
                       <input
                         value={joinCode}
                         onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
@@ -1056,7 +1231,9 @@ export default function App() {
               </form>
 
               <form onSubmit={handleJoinGroup} className="form-stack compact-form">
-                <span className="subtle-copy">Join another family group</span>
+                <span className="subtle-copy">
+                  {referralJoinCode ? "Invite link detected for this group" : "Join another family group"}
+                </span>
                 <input
                   value={joinCode}
                   onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
@@ -1108,6 +1285,22 @@ export default function App() {
                 <strong>{markets.length}</strong>
               </div>
             </div>
+            {selectedGroup ? (
+              <div className="invite-card">
+                <div>
+                  <p className="kicker">Share link</p>
+                  <strong>Invite people with one tap instead of sending just the code.</strong>
+                </div>
+                <p className="subtle-copy invite-link-copy">{selectedGroupInviteUrl}</p>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => void copyInviteLink(selectedGroup.joinCode)}
+                >
+                  Copy invite link
+                </button>
+              </div>
+            ) : null}
           </article>
 
           <article className="panel leaderboard-panel">
