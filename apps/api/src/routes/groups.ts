@@ -16,6 +16,35 @@ const joinGroupSchema = z.object({
   joinCode: z.string().min(6).max(12)
 });
 
+type AdminMembershipCheck =
+  | { ok: true; membership: { role: GroupRole } }
+  | { ok: false; error: { status: number; message: string } };
+
+async function requireAdminMembership(groupId: string, userId: string): Promise<AdminMembershipCheck> {
+  const membership = await prisma.groupMembership.findUnique({
+    where: {
+      userId_groupId: {
+        userId,
+        groupId
+      }
+    }
+  });
+
+  if (!membership) {
+    return { ok: false, error: { status: 404, message: "Family group not found." } };
+  }
+
+  if (membership.role !== GroupRole.ADMIN) {
+    return { ok: false, error: { status: 403, message: "Only group admins can manage members." } };
+  }
+
+  return { ok: true, membership };
+}
+
+function getParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
 groupsRouter.post("/", asyncHandler(async (req, res) => {
   const currentUser = req.currentUser!;
   const input = createGroupSchema.parse(req.body);
@@ -67,4 +96,71 @@ groupsRouter.post("/join", asyncHandler(async (req, res) => {
 
   void notifyGroupMembers(group.id, "group.joined");
   return res.json({ joined: true, groupId: group.id });
+}));
+
+groupsRouter.delete("/:groupId/members/:memberId", asyncHandler(async (req, res) => {
+  const currentUser = req.currentUser!;
+  const groupId = getParam(req.params.groupId);
+  const memberId = getParam(req.params.memberId);
+
+  const adminCheck = await requireAdminMembership(groupId, currentUser.id);
+
+  if (!adminCheck.ok) {
+    return res.status(adminCheck.error.status).json({ message: adminCheck.error.message });
+  }
+
+  if (memberId === currentUser.id) {
+    return res.status(400).json({ message: "Admins cannot remove themselves. Delete the group instead." });
+  }
+
+  const membershipToRemove = await prisma.groupMembership.findUnique({
+    where: {
+      userId_groupId: {
+        userId: memberId,
+        groupId
+      }
+    }
+  });
+
+  if (!membershipToRemove) {
+    return res.status(404).json({ message: "Group member not found." });
+  }
+
+  await prisma.groupMembership.delete({
+    where: {
+      userId_groupId: {
+        userId: memberId,
+        groupId
+      }
+    }
+  });
+
+  void notifyGroupMembers(groupId, "group.member_removed");
+  void notifyUsers([memberId], "group.removed", [groupId]);
+
+  return res.json({ removed: true });
+}));
+
+groupsRouter.delete("/:groupId", asyncHandler(async (req, res) => {
+  const currentUser = req.currentUser!;
+  const groupId = getParam(req.params.groupId);
+
+  const adminCheck = await requireAdminMembership(groupId, currentUser.id);
+
+  if (!adminCheck.ok) {
+    return res.status(adminCheck.error.status).json({ message: adminCheck.error.message });
+  }
+
+  const memberIds = await prisma.groupMembership.findMany({
+    where: { groupId },
+    select: { userId: true }
+  });
+
+  await prisma.familyGroup.delete({
+    where: { id: groupId }
+  });
+
+  void notifyUsers(memberIds.map((membership) => membership.userId), "group.deleted", [groupId]);
+
+  return res.json({ deleted: true });
 }));

@@ -188,6 +188,18 @@ export function joinGroup(token: string, joinCode: string) {
   });
 }
 
+export function removeGroupMember(token: string, groupId: string, memberId: string) {
+  return request<{ removed: boolean }>(`/api/groups/${groupId}/members/${memberId}`, token, {
+    method: "DELETE"
+  });
+}
+
+export function deleteGroup(token: string, groupId: string) {
+  return request<{ deleted: boolean }>(`/api/groups/${groupId}`, token, {
+    method: "DELETE"
+  });
+}
+
 export function getMarkets(token: string, groupId: string) {
   return request<Market[]>(`/api/markets?groupId=${groupId}`, token);
 }

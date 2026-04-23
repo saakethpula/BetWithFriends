@@ -4,12 +4,14 @@ import {
   confirmPosition,
   createGroup,
   createMarket,
+  deleteGroup,
   deleteMarket,
   getCurrentUser,
   getMarkets,
   getRealtimeWebSocketUrl,
   joinGroup,
   markPayoutSent,
+  removeGroupMember,
   rejectPosition,
   respondToPayout,
   resolveMarket,
@@ -622,6 +624,62 @@ export default function App() {
       setStatusMessage("Joined the group.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to join group.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleRemoveGroupMember(groupId: string, memberId: string, memberName: string) {
+    const confirmed = window.confirm(`Remove ${memberName} from this group?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setBusyAction(`remove-member-${memberId}`);
+
+    try {
+      await removeGroupMember(token, groupId, memberId);
+      await refreshWorkspace(token, groupId);
+      setStatusMessage(`${memberName} was removed from the group.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to remove group member.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleDeleteGroup(groupId: string, groupNameToDelete: string) {
+    const confirmed = window.confirm(`Delete ${groupNameToDelete}? This removes the group for everyone.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setBusyAction(`delete-group-${groupId}`);
+
+    try {
+      await deleteGroup(token, groupId);
+      const nextProfile = await refreshProfile(token);
+      const nextSelectedGroupId =
+        selectedGroupId === groupId
+          ? nextProfile.groups[0]?.id ?? ""
+          : selectedGroupId;
+
+      setSelectedGroupId(nextSelectedGroupId);
+
+      if (nextSelectedGroupId) {
+        await refreshMarkets(token, nextSelectedGroupId);
+      } else {
+        setMarkets([]);
+      }
+
+      setSettingsOpen(false);
+      setStatusMessage(`${groupNameToDelete} was deleted.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to delete group.");
     } finally {
       setBusyAction("");
     }
@@ -1380,6 +1438,38 @@ export default function App() {
                   Join group
                 </button>
               </form>
+
+              {selectedGroup && selectedGroup.role === "ADMIN" ? (
+                <div className="form-stack compact-form">
+                  <span className="subtle-copy">Manage {selectedGroup.name}</span>
+                  {selectedGroup.members
+                    .filter((member) => member.id !== profile.user.id)
+                    .map((member) => (
+                      <div key={member.id} className="member-card">
+                        <div>
+                          <strong>{member.displayName}</strong>
+                          <span>{member.role}</span>
+                        </div>
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          disabled={busyAction === `remove-member-${member.id}`}
+                          onClick={() => void handleRemoveGroupMember(selectedGroup.id, member.id, member.displayName)}
+                        >
+                          Kick member
+                        </button>
+                      </div>
+                    ))}
+                  <button
+                    className="toolbar-button toolbar-button-secondary"
+                    type="button"
+                    disabled={busyAction === `delete-group-${selectedGroup.id}`}
+                    onClick={() => void handleDeleteGroup(selectedGroup.id, selectedGroup.name)}
+                  >
+                    Delete group
+                  </button>
+                </div>
+              ) : null}
 
               <div className="form-stack compact-form">
                 <span className="subtle-copy">Tutorial status</span>

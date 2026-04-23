@@ -50,6 +50,16 @@ export function joinGroup(token, joinCode) {
         body: JSON.stringify({ joinCode })
     });
 }
+export function removeGroupMember(token, groupId, memberId) {
+    return request(`/api/groups/${groupId}/members/${memberId}`, token, {
+        method: "DELETE"
+    });
+}
+export function deleteGroup(token, groupId) {
+    return request(`/api/groups/${groupId}`, token, {
+        method: "DELETE"
+    });
+}
 export function getMarkets(token, groupId) {
     return request(`/api/markets?groupId=${groupId}`, token);
 }
