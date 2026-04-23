@@ -21,6 +21,7 @@ export type CurrentUserResponse = {
     displayName: string;
     avatarUrl?: string | null;
     venmoHandle?: string | null;
+    hasCompletedTutorial: boolean;
     balance: number;
   };
   groups: FamilyGroup[];
@@ -163,6 +164,13 @@ export function updateVenmoHandle(token: string, venmoHandle: string) {
   return request<{ user: CurrentUserResponse["user"] }>("/api/me", token, {
     method: "PATCH",
     body: JSON.stringify({ venmoHandle })
+  });
+}
+
+export function updateTutorialCompletion(token: string, completed: boolean) {
+  return request<{ user: CurrentUserResponse["user"] }>("/api/me/tutorial", token, {
+    method: "PATCH",
+    body: JSON.stringify({ completed })
   });
 }
 

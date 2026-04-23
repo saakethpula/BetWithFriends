@@ -15,8 +15,13 @@ const updateVenmoSchema = z.object({
     .transform((value) => value.replace(/^@+/, ""))
 });
 
+const updateTutorialSchema = z.object({
+  completed: z.boolean()
+});
+
 type UserWithVenmo = {
   venmoHandle: string | null;
+  hasCompletedTutorial: boolean;
 };
 
 meRouter.get("/", asyncHandler(async (req, res) => {
@@ -45,7 +50,8 @@ meRouter.get("/", asyncHandler(async (req, res) => {
     user: {
       ...currentUser,
       balance: currentUser.balance,
-      venmoHandle: currentUserWithVenmo.venmoHandle
+      venmoHandle: currentUserWithVenmo.venmoHandle,
+      hasCompletedTutorial: currentUserWithVenmo.hasCompletedTutorial
     },
     groups: memberships.map((membership) => ({
       id: membership.group.id,
@@ -86,7 +92,34 @@ meRouter.patch("/", asyncHandler(async (req, res) => {
       displayName: updatedUser.displayName,
       avatarUrl: updatedUser.avatarUrl,
       balance: updatedUser.balance,
-      venmoHandle: (updatedUser as typeof updatedUser & UserWithVenmo).venmoHandle
+      venmoHandle: (updatedUser as typeof updatedUser & UserWithVenmo).venmoHandle,
+      hasCompletedTutorial: (updatedUser as typeof updatedUser & UserWithVenmo).hasCompletedTutorial
+    }
+  });
+}));
+
+meRouter.patch("/tutorial", asyncHandler(async (req, res) => {
+  const currentUser = req.currentUser!;
+  const input = updateTutorialSchema.parse(req.body);
+
+  const updatedUser = await prisma.user.update({
+    where: { id: currentUser.id },
+    data: {
+      hasCompletedTutorial: input.completed
+    } as never
+  });
+
+  req.currentUser = updatedUser;
+
+  res.json({
+    user: {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      displayName: updatedUser.displayName,
+      avatarUrl: updatedUser.avatarUrl,
+      balance: updatedUser.balance,
+      venmoHandle: (updatedUser as typeof updatedUser & UserWithVenmo).venmoHandle,
+      hasCompletedTutorial: (updatedUser as typeof updatedUser & UserWithVenmo).hasCompletedTutorial
     }
   });
 }));

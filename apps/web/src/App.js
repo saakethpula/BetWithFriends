@@ -1,12 +1,9 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { confirmPosition, createGroup, createMarket, deleteMarket, getCurrentUser, getMarkets, getRealtimeWebSocketUrl, joinGroup, markPayoutSent, rejectPosition, respondToPayout, resolveMarket, updateVenmoHandle, upsertPosition } from "./lib/api";
+import { confirmPosition, createGroup, createMarket, deleteMarket, getCurrentUser, getMarkets, getRealtimeWebSocketUrl, joinGroup, markPayoutSent, rejectPosition, respondToPayout, resolveMarket, updateTutorialCompletion, updateVenmoHandle, upsertPosition } from "./lib/api";
 const DEFAULT_TRADE_AMOUNT = "5";
 const GENERAL_MARKET_VALUE = "GENERAL";
-const ONBOARDING_STORAGE_PREFIX = "first-steps-complete:";
-const ONBOARDING_COOKIE_PREFIX = "first_steps_complete_";
-const ONBOARDING_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const REFERRAL_PARAM_KEYS = ["groupCode", "joinCode", "code"];
 const FALLBACK_REFRESH_INTERVAL_MS = 30000;
 const SOCKET_RECONNECT_MIN_DELAY_MS = 1000;
@@ -68,46 +65,13 @@ function buildGroupInviteUrl(joinCode) {
     inviteUrl.searchParams.set("groupCode", joinCode);
     return inviteUrl.toString();
 }
-function getOnboardingStorageKey(userId) {
-    return `${ONBOARDING_STORAGE_PREFIX}${userId}`;
-}
-function getOnboardingCookieName(userId) {
-    return `${ONBOARDING_COOKIE_PREFIX}${userId}`;
-}
-function readCookie(name) {
-    if (typeof document === "undefined") {
-        return "";
-    }
-    const cookiePrefix = `${name}=`;
-    const cookie = document.cookie
-        .split(";")
-        .map((part) => part.trim())
-        .find((part) => part.startsWith(cookiePrefix));
-    return cookie ? decodeURIComponent(cookie.slice(cookiePrefix.length)) : "";
-}
-function hasCompletedOnboarding(userId) {
-    const onboardingStorageKey = getOnboardingStorageKey(userId);
-    const onboardingCookieName = getOnboardingCookieName(userId);
-    try {
-        if (window.localStorage.getItem(onboardingStorageKey) === "true") {
-            return true;
-        }
-    }
-    catch {
-        // Fall back to the cookie copy when localStorage is unavailable or corrupted.
-    }
-    return readCookie(onboardingCookieName) === "true";
-}
-function persistOnboardingCompletion(userId) {
-    const onboardingStorageKey = getOnboardingStorageKey(userId);
-    const onboardingCookieName = getOnboardingCookieName(userId);
-    try {
-        window.localStorage.setItem(onboardingStorageKey, "true");
-    }
-    catch {
-        // Cookie persistence still keeps onboarding complete if localStorage is unavailable.
-    }
-    document.cookie = `${onboardingCookieName}=true; Max-Age=${ONBOARDING_COOKIE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax`;
+function resetTutorialState() {
+    return {
+        onboardingStep: 0,
+        tutorialDraft: { side: "YES", amount: DEFAULT_TRADE_AMOUNT },
+        tutorialPracticeStep: "pick-side",
+        tutorialBetPlaced: false
+    };
 }
 export default function App() {
     const { isAuthenticated, isLoading, loginWithRedirect, logout, user, getAccessTokenSilently } = useAuth0();
@@ -368,8 +332,7 @@ export default function App() {
         if (!profile) {
             return;
         }
-        const onboardingComplete = hasCompletedOnboarding(profile.user.id);
-        if (!onboardingComplete) {
+        if (!profile.user.hasCompletedTutorial) {
             setShowOnboarding(true);
             return;
         }
@@ -464,6 +427,45 @@ export default function App() {
     }
     function handleTutorialPaymentSent() {
         setTutorialPracticeStep("done");
+    }
+    async function handleTutorialCompletion() {
+        setError("");
+        setBusyAction("tutorial-complete");
+        try {
+            await updateTutorialCompletion(token, true);
+            await refreshProfile(token);
+            setShowOnboarding(false);
+            setStatusMessage("Setup complete. Your desk is ready.");
+        }
+        catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : "Failed to save tutorial progress.");
+        }
+        finally {
+            setBusyAction("");
+        }
+    }
+    async function handleRestartTutorial() {
+        setError("");
+        setBusyAction("tutorial-reset");
+        try {
+            await updateTutorialCompletion(token, false);
+            await refreshProfile(token);
+            const resetState = resetTutorialState();
+            setOnboardingStep(resetState.onboardingStep);
+            setTutorialDraft(resetState.tutorialDraft);
+            setTutorialPracticeStep(resetState.tutorialPracticeStep);
+            setTutorialBetPlaced(resetState.tutorialBetPlaced);
+            setTutorialHoverTarget(null);
+            setSettingsOpen(false);
+            setShowOnboarding(true);
+            setStatusMessage("Tutorial restarted. Walk through the setup again whenever you're ready.");
+        }
+        catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : "Failed to restart tutorial.");
+        }
+        finally {
+            setBusyAction("");
+        }
     }
     async function handleCreateGroup(event) {
         event.preventDefault();
@@ -720,17 +722,13 @@ export default function App() {
                                                                         ? "Practice payment confirmed"
                                                                         : "I sent the practice Venmo" })] })) : null] })] }), tutorialPracticeStep === "done" ? (_jsxs("div", { className: "tutorial-success-banner", children: [_jsx("strong", { children: "You\u2019ve completed the fake bet flow." }), _jsx("p", { children: "The live board uses the same steps: choose a side, enter an amount, save the position, then follow the payment confirmation prompt." })] })) : null] })) : null, _jsxs("div", { className: "onboarding-footer slideshow-controls", children: [_jsx("button", { className: "ghost-button", type: "button", disabled: onboardingStep === 0, onClick: () => setOnboardingStep((current) => Math.max(0, current - 1)), children: "Previous" }), onboardingStep < totalOnboardingSteps - 1 ? (_jsx("button", { className: "primary-button", type: "button", disabled: (isVenmoSlide && needsVenmoHandle) ||
                                                 (isGroupSlide && needsFirstGroup) ||
-                                                (isPracticeSlide && !canStartPractice), onClick: () => setOnboardingStep((current) => Math.min(totalOnboardingSteps - 1, current + 1)), children: isIntroSlide ? "Start tutorial" : isGroupSlide ? "Open live tutorial" : "Next" })) : (_jsx("button", { className: "primary-button", type: "button", disabled: !onboardingReady || tutorialPracticeStep !== "done", onClick: () => {
-                                                persistOnboardingCompletion(profile.user.id);
-                                                setShowOnboarding(false);
-                                                setStatusMessage("Setup complete. Your desk is ready.");
-                                            }, children: "Continue to dashboard" }))] })] }) })] }) }));
+                                                (isPracticeSlide && !canStartPractice), onClick: () => setOnboardingStep((current) => Math.min(totalOnboardingSteps - 1, current + 1)), children: isIntroSlide ? "Start tutorial" : isGroupSlide ? "Open live tutorial" : "Next" })) : (_jsx("button", { className: "primary-button", type: "button", disabled: !onboardingReady || tutorialPracticeStep !== "done" || busyAction === "tutorial-complete", onClick: () => void handleTutorialCompletion(), children: "Continue to dashboard" }))] })] }) })] }) }));
     }
     return (_jsxs("main", { className: "shell app-shell", children: [_jsx("section", { className: "dashboard-toolbar", children: _jsxs("div", { className: "toolbar-meta", children: [_jsxs("div", { className: "toolbar-balance", children: [_jsx("span", { className: "metric-label", children: "Net won / lost" }), _jsx("strong", { children: formatSignedMoney(profile?.user.balance ?? 0) })] }), _jsxs("div", { className: "toolbar-actions", children: [_jsx("button", { className: "toolbar-button", type: "button", onClick: () => setSettingsOpen((current) => !current), children: settingsOpen ? "Close settings" : "Settings" }), _jsx("button", { className: "toolbar-button toolbar-button-secondary", onClick: () => logout({
                                         logoutParams: {
                                             returnTo: window.location.origin
                                         }
-                                    }), children: "Log out" })] })] }) }), error ? (_jsx("section", { className: "status-banner", children: _jsx("strong", { children: error }) })) : null, settingsOpen ? (_jsxs("section", { className: "settings-overlay", "aria-label": "Settings", children: [_jsx("button", { className: "settings-backdrop", type: "button", "aria-label": "Close settings", onClick: () => setSettingsOpen(false) }), _jsxs("article", { className: "panel settings-panel settings-modal", children: [_jsxs("div", { className: "panel-heading settings-modal-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Settings" }), _jsx("h2", { children: "Groups and payments" })] }), _jsx("button", { className: "toolbar-button toolbar-button-secondary", type: "button", onClick: () => setSettingsOpen(false), children: "Close" })] }), _jsxs("div", { className: "settings-grid", children: [_jsxs("form", { onSubmit: handleSaveVenmoHandle, className: "form-stack compact-form", children: [_jsx("span", { className: "subtle-copy", children: "Your Venmo handle for payment instructions" }), _jsx("input", { value: venmoHandle, onChange: (event) => setVenmoHandle(event.target.value), placeholder: "@yourhandle", required: true }), _jsx("button", { className: "secondary-button", type: "submit", disabled: busyAction === "venmo", children: "Save Venmo" })] }), _jsxs("form", { onSubmit: handleCreateGroup, className: "form-stack compact-form", children: [_jsx("span", { className: "subtle-copy", children: "Create a new family group" }), _jsx("input", { value: groupName, onChange: (event) => setGroupName(event.target.value), placeholder: "The Parkers", required: true }), _jsx("button", { className: "primary-button", type: "submit", disabled: busyAction === "create-group", children: "Create group" })] }), _jsxs("form", { onSubmit: handleJoinGroup, className: "form-stack compact-form", children: [_jsx("span", { className: "subtle-copy", children: referralJoinCode ? "Invite link detected for this group" : "Join another family group" }), _jsx("input", { value: joinCode, onChange: (event) => setJoinCode(event.target.value.toUpperCase()), placeholder: "Join code", required: true }), _jsx("button", { className: "ghost-button", type: "submit", disabled: busyAction === "join-group", children: "Join group" })] })] })] })] })) : null, _jsxs("section", { className: "dashboard-grid", children: [_jsxs("aside", { className: "sidebar-stack", children: [_jsxs("article", { className: "panel family-strip family-panel", children: [_jsxs("div", { className: "panel-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Current family" }), _jsx("h2", { children: selectedGroup?.name ?? "Choose a family group" })] }), _jsx("span", { className: "subtle-copy", children: selectedGroup ? `Join code ${selectedGroup.joinCode}` : "Pick a group in settings" })] }), _jsx("div", { className: "group-selector vertical", children: profile?.groups.map((group) => (_jsxs("button", { type: "button", className: selectedGroupId === group.id ? "group-pill active" : "group-pill", onClick: () => setSelectedGroupId(group.id), children: [_jsx("span", { children: group.name }), _jsx("strong", { children: group.role }), _jsx("small", { children: group.joinCode })] }, group.id))) }), _jsxs("div", { className: "family-strip-meta", children: [_jsxs("div", { className: "compact-metric", children: [_jsx("span", { className: "metric-label", children: "Members" }), _jsx("strong", { children: selectedGroup?.members.length ?? 0 })] }), _jsxs("div", { className: "compact-metric", children: [_jsx("span", { className: "metric-label", children: "Visible markets" }), _jsx("strong", { children: markets.length })] })] }), selectedGroup ? (_jsxs("div", { className: "invite-card", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Share link" }), _jsx("strong", { children: "Invite people with one tap instead of sending just the code." })] }), _jsx("p", { className: "subtle-copy invite-link-copy", children: selectedGroupInviteUrl }), _jsx("button", { className: "ghost-button", type: "button", onClick: () => void copyInviteLink(selectedGroup.joinCode), children: "Copy invite link" })] })) : null] }), _jsxs("article", { className: "panel leaderboard-panel", children: [_jsx("div", { className: "panel-heading", children: _jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Members" }), _jsx("h2", { children: "Win / loss board" })] }) }), _jsx("div", { className: "member-grid sidebar-members", children: visibleMembers.map((member) => (_jsxs("div", { className: "member-card", children: [_jsxs("div", { children: [_jsx("strong", { children: member.displayName }), _jsx("span", { children: member.role })] }), _jsx("strong", { children: formatSignedMoney(member.balance) })] }, member.id))) })] })] }), _jsxs("section", { className: "main-stack", children: [_jsxs("article", { className: "panel create-panel", children: [_jsxs("div", { className: "panel-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Hidden market" }), _jsx("h2", { children: "Launch a new thesis" })] }), selectedGroup ? _jsxs("span", { className: "subtle-copy", children: ["Live in ", selectedGroup.name] }) : null] }), _jsxs("form", { onSubmit: handleCreateMarket, className: "create-market-grid", children: [_jsxs("select", { value: targetUserId, onChange: (event) => setTargetUserId(event.target.value), required: true, children: [_jsx("option", { value: "", children: "Choose who the market is about" }), _jsx("option", { value: GENERAL_MARKET_VALUE, children: "General" }), selectedGroup?.members
+                                    }), children: "Log out" })] })] }) }), error ? (_jsx("section", { className: "status-banner", children: _jsx("strong", { children: error }) })) : null, settingsOpen ? (_jsxs("section", { className: "settings-overlay", "aria-label": "Settings", children: [_jsx("button", { className: "settings-backdrop", type: "button", "aria-label": "Close settings", onClick: () => setSettingsOpen(false) }), _jsxs("article", { className: "panel settings-panel settings-modal", children: [_jsxs("div", { className: "panel-heading settings-modal-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Settings" }), _jsx("h2", { children: "Groups and payments" })] }), _jsx("button", { className: "toolbar-button toolbar-button-secondary", type: "button", onClick: () => setSettingsOpen(false), children: "Close" })] }), _jsxs("div", { className: "settings-grid", children: [_jsxs("form", { onSubmit: handleSaveVenmoHandle, className: "form-stack compact-form", children: [_jsx("span", { className: "subtle-copy", children: "Your Venmo handle for payment instructions" }), _jsx("input", { value: venmoHandle, onChange: (event) => setVenmoHandle(event.target.value), placeholder: "@yourhandle", required: true }), _jsx("button", { className: "secondary-button", type: "submit", disabled: busyAction === "venmo", children: "Save Venmo" })] }), _jsxs("form", { onSubmit: handleCreateGroup, className: "form-stack compact-form", children: [_jsx("span", { className: "subtle-copy", children: "Create a new family group" }), _jsx("input", { value: groupName, onChange: (event) => setGroupName(event.target.value), placeholder: "The Parkers", required: true }), _jsx("button", { className: "primary-button", type: "submit", disabled: busyAction === "create-group", children: "Create group" })] }), _jsxs("form", { onSubmit: handleJoinGroup, className: "form-stack compact-form", children: [_jsx("span", { className: "subtle-copy", children: referralJoinCode ? "Invite link detected for this group" : "Join another family group" }), _jsx("input", { value: joinCode, onChange: (event) => setJoinCode(event.target.value.toUpperCase()), placeholder: "Join code", required: true }), _jsx("button", { className: "ghost-button", type: "submit", disabled: busyAction === "join-group", children: "Join group" })] }), _jsxs("div", { className: "form-stack compact-form", children: [_jsx("span", { className: "subtle-copy", children: "Tutorial status" }), _jsx("strong", { children: profile.user.hasCompletedTutorial ? "Completed" : "Not completed yet" }), _jsx("button", { className: "toolbar-button toolbar-button-secondary", type: "button", disabled: busyAction === "tutorial-reset", onClick: () => void handleRestartTutorial(), children: "Redo tutorial" })] })] })] })] })) : null, _jsxs("section", { className: "dashboard-grid", children: [_jsxs("aside", { className: "sidebar-stack", children: [_jsxs("article", { className: "panel family-strip family-panel", children: [_jsxs("div", { className: "panel-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Current family" }), _jsx("h2", { children: selectedGroup?.name ?? "Choose a family group" })] }), _jsx("span", { className: "subtle-copy", children: selectedGroup ? `Join code ${selectedGroup.joinCode}` : "Pick a group in settings" })] }), _jsx("div", { className: "group-selector vertical", children: profile?.groups.map((group) => (_jsxs("button", { type: "button", className: selectedGroupId === group.id ? "group-pill active" : "group-pill", onClick: () => setSelectedGroupId(group.id), children: [_jsx("span", { children: group.name }), _jsx("strong", { children: group.role }), _jsx("small", { children: group.joinCode })] }, group.id))) }), _jsxs("div", { className: "family-strip-meta", children: [_jsxs("div", { className: "compact-metric", children: [_jsx("span", { className: "metric-label", children: "Members" }), _jsx("strong", { children: selectedGroup?.members.length ?? 0 })] }), _jsxs("div", { className: "compact-metric", children: [_jsx("span", { className: "metric-label", children: "Visible markets" }), _jsx("strong", { children: markets.length })] })] }), selectedGroup ? (_jsxs("div", { className: "invite-card", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Share link" }), _jsx("strong", { children: "Invite people with one tap instead of sending just the code." })] }), _jsx("p", { className: "subtle-copy invite-link-copy", children: selectedGroupInviteUrl }), _jsx("button", { className: "ghost-button", type: "button", onClick: () => void copyInviteLink(selectedGroup.joinCode), children: "Copy invite link" })] })) : null] }), _jsxs("article", { className: "panel leaderboard-panel", children: [_jsx("div", { className: "panel-heading", children: _jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Members" }), _jsx("h2", { children: "Win / loss board" })] }) }), _jsx("div", { className: "member-grid sidebar-members", children: visibleMembers.map((member) => (_jsxs("div", { className: "member-card", children: [_jsxs("div", { children: [_jsx("strong", { children: member.displayName }), _jsx("span", { children: member.role })] }), _jsx("strong", { children: formatSignedMoney(member.balance) })] }, member.id))) })] })] }), _jsxs("section", { className: "main-stack", children: [_jsxs("article", { className: "panel create-panel", children: [_jsxs("div", { className: "panel-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Hidden market" }), _jsx("h2", { children: "Launch a new thesis" })] }), selectedGroup ? _jsxs("span", { className: "subtle-copy", children: ["Live in ", selectedGroup.name] }) : null] }), _jsxs("form", { onSubmit: handleCreateMarket, className: "create-market-grid", children: [_jsxs("select", { value: targetUserId, onChange: (event) => setTargetUserId(event.target.value), required: true, children: [_jsx("option", { value: "", children: "Choose who the market is about" }), _jsx("option", { value: GENERAL_MARKET_VALUE, children: "General" }), selectedGroup?.members
                                                         .filter((member) => member.id !== profile?.user.id)
                                                         .map((member) => (_jsx("option", { value: member.id, children: member.displayName }, member.id)))] }), _jsx("input", { value: question, onChange: (event) => setQuestion(event.target.value), placeholder: "Will Alex announce the move before Labor Day?", required: true }), _jsx("textarea", { rows: 4, value: description, onChange: (event) => setDescription(event.target.value), placeholder: "Settlement notes, timeline, edge cases" }), _jsx("input", { type: "datetime-local", value: closesAt, onChange: (event) => setClosesAt(event.target.value), required: true }), _jsx("button", { className: "primary-button", type: "submit", disabled: !selectedGroupId || busyAction === "create-market", children: "Publish market" })] })] }), _jsxs("section", { className: "market-board", children: [_jsxs("div", { className: "panel-heading board-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "kicker", children: "Market board" }), _jsx("h2", { children: selectedGroup?.name ?? "Choose a group" })] }), _jsx("span", { className: "subtle-copy", children: "General markets are visible to everyone. Person-specific markets stay hidden from the subject." })] }), markets.length === 0 ? (_jsxs("article", { className: "empty-panel", children: [_jsx("h3", { children: "No visible markets yet." }), _jsx("p", { children: "Once a market targets someone else in this group, it will show up here with editable positions and automatic settlement." })] })) : (_jsx("div", { className: "market-grid", children: markets.map((market) => {
                                             const draft = tradeDrafts[market.id] ?? {

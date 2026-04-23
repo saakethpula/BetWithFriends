@@ -32,6 +32,12 @@ export function updateVenmoHandle(token, venmoHandle) {
         body: JSON.stringify({ venmoHandle })
     });
 }
+export function updateTutorialCompletion(token, completed) {
+    return request("/api/me/tutorial", token, {
+        method: "PATCH",
+        body: JSON.stringify({ completed })
+    });
+}
 export function createGroup(token, name) {
     return request("/api/groups", token, {
         method: "POST",

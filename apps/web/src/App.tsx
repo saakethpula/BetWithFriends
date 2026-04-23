@@ -13,6 +13,7 @@ import {
   rejectPosition,
   respondToPayout,
   resolveMarket,
+  updateTutorialCompletion,
   updateVenmoHandle,
   upsertPosition,
   type CurrentUserResponse,
@@ -21,9 +22,6 @@ import {
 
 const DEFAULT_TRADE_AMOUNT = "5";
 const GENERAL_MARKET_VALUE = "GENERAL";
-const ONBOARDING_STORAGE_PREFIX = "first-steps-complete:";
-const ONBOARDING_COOKIE_PREFIX = "first_steps_complete_";
-const ONBOARDING_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const REFERRAL_PARAM_KEYS = ["groupCode", "joinCode", "code"];
 const FALLBACK_REFRESH_INTERVAL_MS = 30000;
 const SOCKET_RECONNECT_MIN_DELAY_MS = 1000;
@@ -103,54 +101,13 @@ function buildGroupInviteUrl(joinCode: string) {
   return inviteUrl.toString();
 }
 
-function getOnboardingStorageKey(userId: string) {
-  return `${ONBOARDING_STORAGE_PREFIX}${userId}`;
-}
-
-function getOnboardingCookieName(userId: string) {
-  return `${ONBOARDING_COOKIE_PREFIX}${userId}`;
-}
-
-function readCookie(name: string) {
-  if (typeof document === "undefined") {
-    return "";
-  }
-
-  const cookiePrefix = `${name}=`;
-  const cookie = document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(cookiePrefix));
-
-  return cookie ? decodeURIComponent(cookie.slice(cookiePrefix.length)) : "";
-}
-
-function hasCompletedOnboarding(userId: string) {
-  const onboardingStorageKey = getOnboardingStorageKey(userId);
-  const onboardingCookieName = getOnboardingCookieName(userId);
-
-  try {
-    if (window.localStorage.getItem(onboardingStorageKey) === "true") {
-      return true;
-    }
-  } catch {
-    // Fall back to the cookie copy when localStorage is unavailable or corrupted.
-  }
-
-  return readCookie(onboardingCookieName) === "true";
-}
-
-function persistOnboardingCompletion(userId: string) {
-  const onboardingStorageKey = getOnboardingStorageKey(userId);
-  const onboardingCookieName = getOnboardingCookieName(userId);
-
-  try {
-    window.localStorage.setItem(onboardingStorageKey, "true");
-  } catch {
-    // Cookie persistence still keeps onboarding complete if localStorage is unavailable.
-  }
-
-  document.cookie = `${onboardingCookieName}=true; Max-Age=${ONBOARDING_COOKIE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax`;
+function resetTutorialState() {
+  return {
+    onboardingStep: 0,
+    tutorialDraft: { side: "YES" as const, amount: DEFAULT_TRADE_AMOUNT },
+    tutorialPracticeStep: "pick-side" as const,
+    tutorialBetPlaced: false
+  };
 }
 
 type TradeDraft = {
@@ -482,9 +439,7 @@ export default function App() {
       return;
     }
 
-    const onboardingComplete = hasCompletedOnboarding(profile.user.id);
-
-    if (!onboardingComplete) {
+    if (!profile.user.hasCompletedTutorial) {
       setShowOnboarding(true);
       return;
     }
@@ -593,6 +548,45 @@ export default function App() {
 
   function handleTutorialPaymentSent() {
     setTutorialPracticeStep("done");
+  }
+
+  async function handleTutorialCompletion() {
+    setError("");
+    setBusyAction("tutorial-complete");
+
+    try {
+      await updateTutorialCompletion(token, true);
+      await refreshProfile(token);
+      setShowOnboarding(false);
+      setStatusMessage("Setup complete. Your desk is ready.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to save tutorial progress.");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleRestartTutorial() {
+    setError("");
+    setBusyAction("tutorial-reset");
+
+    try {
+      await updateTutorialCompletion(token, false);
+      await refreshProfile(token);
+      const resetState = resetTutorialState();
+      setOnboardingStep(resetState.onboardingStep);
+      setTutorialDraft(resetState.tutorialDraft);
+      setTutorialPracticeStep(resetState.tutorialPracticeStep);
+      setTutorialBetPlaced(resetState.tutorialBetPlaced);
+      setTutorialHoverTarget(null);
+      setSettingsOpen(false);
+      setShowOnboarding(true);
+      setStatusMessage("Tutorial restarted. Walk through the setup again whenever you're ready.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to restart tutorial.");
+    } finally {
+      setBusyAction("");
+    }
   }
 
   async function handleCreateGroup(event: FormEvent<HTMLFormElement>) {
@@ -1267,12 +1261,8 @@ export default function App() {
                   <button
                     className="primary-button"
                     type="button"
-                    disabled={!onboardingReady || tutorialPracticeStep !== "done"}
-                    onClick={() => {
-                      persistOnboardingCompletion(profile.user.id);
-                      setShowOnboarding(false);
-                      setStatusMessage("Setup complete. Your desk is ready.");
-                    }}
+                    disabled={!onboardingReady || tutorialPracticeStep !== "done" || busyAction === "tutorial-complete"}
+                    onClick={() => void handleTutorialCompletion()}
                   >
                     Continue to dashboard
                   </button>
@@ -1390,6 +1380,21 @@ export default function App() {
                   Join group
                 </button>
               </form>
+
+              <div className="form-stack compact-form">
+                <span className="subtle-copy">Tutorial status</span>
+                <strong>
+                  {profile.user.hasCompletedTutorial ? "Completed" : "Not completed yet"}
+                </strong>
+                <button
+                  className="toolbar-button toolbar-button-secondary"
+                  type="button"
+                  disabled={busyAction === "tutorial-reset"}
+                  onClick={() => void handleRestartTutorial()}
+                >
+                  Redo tutorial
+                </button>
+              </div>
             </div>
           </article>
         </section>
