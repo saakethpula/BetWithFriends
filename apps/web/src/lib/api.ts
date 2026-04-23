@@ -121,6 +121,16 @@ export type Market = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
+export function getRealtimeWebSocketUrl(token: string) {
+  const realtimeUrl = new URL(apiBaseUrl);
+  realtimeUrl.protocol = realtimeUrl.protocol === "https:" ? "wss:" : "ws:";
+  realtimeUrl.pathname = "/ws";
+  realtimeUrl.search = new URLSearchParams({
+    access_token: token
+  }).toString();
+  return realtimeUrl.toString();
+}
+
 async function request<T>(
   path: string,
   token: string,

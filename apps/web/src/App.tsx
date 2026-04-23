@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   confirmPosition,
@@ -7,6 +7,7 @@ import {
   deleteMarket,
   getCurrentUser,
   getMarkets,
+  getRealtimeWebSocketUrl,
   joinGroup,
   markPayoutSent,
   rejectPosition,
@@ -24,7 +25,9 @@ const ONBOARDING_STORAGE_PREFIX = "first-steps-complete:";
 const ONBOARDING_COOKIE_PREFIX = "first_steps_complete_";
 const ONBOARDING_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const REFERRAL_PARAM_KEYS = ["groupCode", "joinCode", "code"];
-const AUTO_REFRESH_INTERVAL_MS = 2000;
+const FALLBACK_REFRESH_INTERVAL_MS = 30000;
+const SOCKET_RECONNECT_MIN_DELAY_MS = 1000;
+const SOCKET_RECONNECT_MAX_DELAY_MS = 10000;
 
 function tomorrowAtNoon() {
   const date = new Date();
@@ -194,6 +197,8 @@ export default function App() {
     "side" | "amount" | "submit" | "payment" | null
   >(null);
   const [tutorialBetPlaced, setTutorialBetPlaced] = useState(false);
+  const selectedGroupIdRef = useRef(selectedGroupId);
+  const liveRefreshInFlightRef = useRef(false);
 
   const selectedGroup = useMemo(
     () => profile?.groups.find((group) => group.id === selectedGroupId) ?? null,
@@ -218,6 +223,10 @@ export default function App() {
   const tutorialAmountNumber = Number(tutorialDraft.amount || "0");
   const tutorialVenmoUrl = getVenmoUrl("saakethp");
   const selectedGroupInviteUrl = selectedGroup ? buildGroupInviteUrl(selectedGroup.joinCode) : "";
+
+  useEffect(() => {
+    selectedGroupIdRef.current = selectedGroupId;
+  }, [selectedGroupId]);
 
   const tutorialPrompt =
     tutorialHoverTarget === "side"
@@ -269,6 +278,46 @@ export default function App() {
 
   async function refreshWorkspace(accessToken: string, groupId: string) {
     await Promise.all([refreshProfile(accessToken), refreshMarkets(accessToken, groupId)]);
+  }
+
+  async function refreshLiveWorkspace(accessToken: string, groupIds?: string[]) {
+    if (liveRefreshInFlightRef.current || document.visibilityState === "hidden") {
+      return;
+    }
+
+    liveRefreshInFlightRef.current = true;
+
+    try {
+      const nextProfile = await refreshProfile(accessToken);
+      let activeGroupId = selectedGroupIdRef.current;
+
+      if (!activeGroupId && nextProfile.groups[0]?.id) {
+        activeGroupId = nextProfile.groups[0].id;
+        setSelectedGroupId(activeGroupId);
+      } else if (activeGroupId && !nextProfile.groups.some((group) => group.id === activeGroupId)) {
+        activeGroupId = nextProfile.groups[0]?.id ?? "";
+        setSelectedGroupId(activeGroupId);
+      }
+
+      if (activeGroupId) {
+        const shouldRefreshMarkets =
+          !groupIds ||
+          groupIds.length === 0 ||
+          groupIds.includes(activeGroupId);
+
+        if (shouldRefreshMarkets) {
+          await refreshMarkets(accessToken, activeGroupId);
+        }
+      } else {
+        setMarkets([]);
+      }
+
+      setError("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to refresh live data.");
+    } finally {
+      liveRefreshInFlightRef.current = false;
+    }
   }
 
   async function copyInviteLink(joinCodeToShare: string) {
@@ -337,52 +386,96 @@ export default function App() {
     }
 
     let active = true;
-    let refreshing = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimerId = 0;
+    let reconnectDelay = SOCKET_RECONNECT_MIN_DELAY_MS;
 
-    const refreshLiveData = async () => {
-      if (!active || refreshing || document.visibilityState === "hidden") {
+    const clearReconnectTimer = () => {
+      if (reconnectTimerId) {
+        window.clearTimeout(reconnectTimerId);
+        reconnectTimerId = 0;
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (!active || reconnectTimerId) {
         return;
       }
 
-      refreshing = true;
+      const nextDelay = reconnectDelay;
+      reconnectDelay = Math.min(reconnectDelay * 2, SOCKET_RECONNECT_MAX_DELAY_MS);
+      reconnectTimerId = window.setTimeout(() => {
+        reconnectTimerId = 0;
+        connect();
+      }, nextDelay);
+    };
 
-      try {
-        const nextProfile = await refreshProfile(token);
-        if (!active) {
-          return;
+    const connect = () => {
+      if (!active) {
+        return;
+      }
+
+      clearReconnectTimer();
+      socket = new WebSocket(getRealtimeWebSocketUrl(token));
+
+      socket.addEventListener("open", () => {
+        reconnectDelay = SOCKET_RECONNECT_MIN_DELAY_MS;
+      });
+
+      socket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(event.data as string) as {
+            type?: string;
+            groupIds?: string[];
+          };
+
+          if (message.type !== "workspace.invalidate") {
+            return;
+          }
+
+          void refreshLiveWorkspace(token, Array.isArray(message.groupIds) ? message.groupIds : undefined);
+        } catch {
+          // Ignore malformed socket payloads and wait for the next valid event.
         }
+      });
 
-        if (!selectedGroupId && nextProfile.groups[0]?.id) {
-          setSelectedGroupId(nextProfile.groups[0].id);
-        } else if (selectedGroupId && !nextProfile.groups.some((group) => group.id === selectedGroupId)) {
-          setSelectedGroupId(nextProfile.groups[0]?.id ?? "");
-        }
+      socket.addEventListener("close", () => {
+        socket = null;
+        scheduleReconnect();
+      });
 
-        if (selectedGroupId) {
-          await refreshMarkets(token, selectedGroupId);
-        }
+      socket.addEventListener("error", () => {
+        socket?.close();
+      });
+    };
 
-        setError("");
-      } catch (requestError) {
-        if (!active) {
-          return;
-        }
+    const fallbackIntervalId = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
 
-        setError(requestError instanceof Error ? requestError.message : "Failed to refresh live data.");
-      } finally {
-        refreshing = false;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        void refreshLiveWorkspace(token);
+      }
+    }, FALLBACK_REFRESH_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshLiveWorkspace(token);
       }
     };
 
-    const intervalId = window.setInterval(() => {
-      void refreshLiveData();
-    }, AUTO_REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    connect();
 
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearReconnectTimer();
+      window.clearInterval(fallbackIntervalId);
+      socket?.close();
     };
-  }, [selectedGroupId, token]);
+  }, [token]);
 
   useEffect(() => {
     if (!profile) {

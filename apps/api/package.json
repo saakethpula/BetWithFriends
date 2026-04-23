@@ -20,6 +20,7 @@
     "helmet": "^8.1.0",
     "morgan": "^1.10.0",
     "nanoid": "^5.1.5",
+    "ws": "^8.18.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {

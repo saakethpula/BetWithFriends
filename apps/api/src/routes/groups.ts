@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { createJoinCode } from "../lib/join-code.js";
+import { notifyGroupMembers, notifyUsers } from "../lib/realtime.js";
 import { asyncHandler } from "../middleware/async-handler.js";
 
 export const groupsRouter = Router();
@@ -32,6 +33,7 @@ groupsRouter.post("/", asyncHandler(async (req, res) => {
     }
   });
 
+  void notifyUsers([currentUser.id], "group.created", [group.id]);
   res.status(201).json(group);
 }));
 
@@ -63,5 +65,6 @@ groupsRouter.post("/join", asyncHandler(async (req, res) => {
     }
   });
 
+  void notifyGroupMembers(group.id, "group.joined");
   return res.json({ joined: true, groupId: group.id });
 }));

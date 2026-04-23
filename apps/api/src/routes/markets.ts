@@ -10,6 +10,7 @@ import {
   filterConfirmedPositions,
   filterPendingPositions
 } from "../lib/market.js";
+import { notifyGroupMembers } from "../lib/realtime.js";
 import { asyncHandler } from "../middleware/async-handler.js";
 
 export const marketsRouter = Router();
@@ -304,6 +305,7 @@ marketsRouter.post("/", asyncHandler(async (req, res) => {
     include: detailedMarketInclude
   } as never) as unknown as SerializableMarket;
 
+  void notifyGroupMembers(market.groupId, "market.created");
   res.status(201).json({
     ...serializeMarket(market, currentUser.id)
   });
@@ -382,6 +384,7 @@ marketsRouter.put("/:marketId/position", asyncHandler(async (req, res) => {
     return findDetailedMarketOrThrow(tx, marketId);
   });
 
+  void notifyGroupMembers(updatedMarket.groupId, "market.position.updated");
   res.status(200).json(serializeMarket(updatedMarket, currentUser.id));
 }));
 
@@ -418,6 +421,7 @@ marketsRouter.post("/:marketId/positions/:positionId/confirm", asyncHandler(asyn
     return findDetailedMarketOrThrow(tx, marketId);
   });
 
+  void notifyGroupMembers(updatedMarket.groupId, "market.position.confirmed");
   res.json(serializeMarket(updatedMarket, currentUser.id));
 }));
 
@@ -450,6 +454,7 @@ marketsRouter.delete("/:marketId/positions/:positionId", asyncHandler(async (req
     return findDetailedMarketOrThrow(tx, marketId);
   });
 
+  void notifyGroupMembers(updatedMarket.groupId, "market.position.rejected");
   res.json(serializeMarket(updatedMarket, currentUser.id));
 }));
 
@@ -542,6 +547,7 @@ marketsRouter.post("/:marketId/resolve", asyncHandler(async (req, res) => {
     return findDetailedMarketOrThrow(tx, marketId);
   });
 
+  void notifyGroupMembers(updated.groupId, "market.resolved");
   res.json(serializeMarket(updated, currentUser.id));
 }));
 
@@ -587,6 +593,7 @@ marketsRouter.delete("/:marketId", asyncHandler(async (req, res) => {
     });
   });
 
+  void notifyGroupMembers(market.groupId, "market.deleted");
   res.json({ deleted: true });
 }));
 
@@ -629,6 +636,7 @@ marketsRouter.post("/:marketId/payouts/:payoutId/sent", asyncHandler(async (req,
     return findDetailedMarketOrThrow(tx, marketId);
   });
 
+  void notifyGroupMembers(updatedMarket.groupId, "market.payout.sent");
   res.json(serializeMarket(updatedMarket, currentUser.id));
 }));
 
@@ -668,5 +676,6 @@ marketsRouter.post("/:marketId/payouts/:payoutId/respond", asyncHandler(async (r
     return findDetailedMarketOrThrow(tx, marketId);
   });
 
+  void notifyGroupMembers(updatedMarket.groupId, "market.payout.responded");
   res.json(serializeMarket(updatedMarket, currentUser.id));
 }));

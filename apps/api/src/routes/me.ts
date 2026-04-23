@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { notifyUserGroups } from "../lib/realtime.js";
 import { asyncHandler } from "../middleware/async-handler.js";
 
 export const meRouter = Router();
@@ -77,6 +78,7 @@ meRouter.patch("/", asyncHandler(async (req, res) => {
 
   req.currentUser = updatedUser;
 
+  void notifyUserGroups(currentUser.id, "profile.updated");
   res.json({
     user: {
       id: updatedUser.id,

@@ -1,14 +1,16 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { confirmPosition, createGroup, createMarket, deleteMarket, getCurrentUser, getMarkets, joinGroup, markPayoutSent, rejectPosition, respondToPayout, resolveMarket, updateVenmoHandle, upsertPosition } from "./lib/api";
+import { confirmPosition, createGroup, createMarket, deleteMarket, getCurrentUser, getMarkets, getRealtimeWebSocketUrl, joinGroup, markPayoutSent, rejectPosition, respondToPayout, resolveMarket, updateVenmoHandle, upsertPosition } from "./lib/api";
 const DEFAULT_TRADE_AMOUNT = "5";
 const GENERAL_MARKET_VALUE = "GENERAL";
 const ONBOARDING_STORAGE_PREFIX = "first-steps-complete:";
 const ONBOARDING_COOKIE_PREFIX = "first_steps_complete_";
 const ONBOARDING_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const REFERRAL_PARAM_KEYS = ["groupCode", "joinCode", "code"];
-const AUTO_REFRESH_INTERVAL_MS = 2000;
+const FALLBACK_REFRESH_INTERVAL_MS = 30000;
+const SOCKET_RECONNECT_MIN_DELAY_MS = 1000;
+const SOCKET_RECONNECT_MAX_DELAY_MS = 10000;
 function tomorrowAtNoon() {
     const date = new Date();
     date.setDate(date.getDate() + 1);
@@ -134,6 +136,8 @@ export default function App() {
     const [tutorialPracticeStep, setTutorialPracticeStep] = useState("pick-side");
     const [tutorialHoverTarget, setTutorialHoverTarget] = useState(null);
     const [tutorialBetPlaced, setTutorialBetPlaced] = useState(false);
+    const selectedGroupIdRef = useRef(selectedGroupId);
+    const liveRefreshInFlightRef = useRef(false);
     const selectedGroup = useMemo(() => profile?.groups.find((group) => group.id === selectedGroupId) ?? null, [profile, selectedGroupId]);
     const visibleMembers = useMemo(() => [...(selectedGroup?.members ?? [])].sort((left, right) => right.balance - left.balance), [selectedGroup]);
     const needsVenmoHandle = !profile?.user.venmoHandle;
@@ -148,6 +152,9 @@ export default function App() {
     const tutorialAmountNumber = Number(tutorialDraft.amount || "0");
     const tutorialVenmoUrl = getVenmoUrl("saakethp");
     const selectedGroupInviteUrl = selectedGroup ? buildGroupInviteUrl(selectedGroup.joinCode) : "";
+    useEffect(() => {
+        selectedGroupIdRef.current = selectedGroupId;
+    }, [selectedGroupId]);
     const tutorialPrompt = tutorialHoverTarget === "side"
         ? "Pick the side you want to back. This mirrors the real YES / NO toggle in the live app."
         : tutorialHoverTarget === "amount"
@@ -191,6 +198,42 @@ export default function App() {
     }
     async function refreshWorkspace(accessToken, groupId) {
         await Promise.all([refreshProfile(accessToken), refreshMarkets(accessToken, groupId)]);
+    }
+    async function refreshLiveWorkspace(accessToken, groupIds) {
+        if (liveRefreshInFlightRef.current || document.visibilityState === "hidden") {
+            return;
+        }
+        liveRefreshInFlightRef.current = true;
+        try {
+            const nextProfile = await refreshProfile(accessToken);
+            let activeGroupId = selectedGroupIdRef.current;
+            if (!activeGroupId && nextProfile.groups[0]?.id) {
+                activeGroupId = nextProfile.groups[0].id;
+                setSelectedGroupId(activeGroupId);
+            }
+            else if (activeGroupId && !nextProfile.groups.some((group) => group.id === activeGroupId)) {
+                activeGroupId = nextProfile.groups[0]?.id ?? "";
+                setSelectedGroupId(activeGroupId);
+            }
+            if (activeGroupId) {
+                const shouldRefreshMarkets = !groupIds ||
+                    groupIds.length === 0 ||
+                    groupIds.includes(activeGroupId);
+                if (shouldRefreshMarkets) {
+                    await refreshMarkets(accessToken, activeGroupId);
+                }
+            }
+            else {
+                setMarkets([]);
+            }
+            setError("");
+        }
+        catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : "Failed to refresh live data.");
+        }
+        finally {
+            liveRefreshInFlightRef.current = false;
+        }
     }
     async function copyInviteLink(joinCodeToShare) {
         const inviteUrl = buildGroupInviteUrl(joinCodeToShare);
@@ -249,46 +292,78 @@ export default function App() {
             return;
         }
         let active = true;
-        let refreshing = false;
-        const refreshLiveData = async () => {
-            if (!active || refreshing || document.visibilityState === "hidden") {
+        let socket = null;
+        let reconnectTimerId = 0;
+        let reconnectDelay = SOCKET_RECONNECT_MIN_DELAY_MS;
+        const clearReconnectTimer = () => {
+            if (reconnectTimerId) {
+                window.clearTimeout(reconnectTimerId);
+                reconnectTimerId = 0;
+            }
+        };
+        const scheduleReconnect = () => {
+            if (!active || reconnectTimerId) {
                 return;
             }
-            refreshing = true;
-            try {
-                const nextProfile = await refreshProfile(token);
-                if (!active) {
-                    return;
-                }
-                if (!selectedGroupId && nextProfile.groups[0]?.id) {
-                    setSelectedGroupId(nextProfile.groups[0].id);
-                }
-                else if (selectedGroupId && !nextProfile.groups.some((group) => group.id === selectedGroupId)) {
-                    setSelectedGroupId(nextProfile.groups[0]?.id ?? "");
-                }
-                if (selectedGroupId) {
-                    await refreshMarkets(token, selectedGroupId);
-                }
-                setError("");
+            const nextDelay = reconnectDelay;
+            reconnectDelay = Math.min(reconnectDelay * 2, SOCKET_RECONNECT_MAX_DELAY_MS);
+            reconnectTimerId = window.setTimeout(() => {
+                reconnectTimerId = 0;
+                connect();
+            }, nextDelay);
+        };
+        const connect = () => {
+            if (!active) {
+                return;
             }
-            catch (requestError) {
-                if (!active) {
-                    return;
+            clearReconnectTimer();
+            socket = new WebSocket(getRealtimeWebSocketUrl(token));
+            socket.addEventListener("open", () => {
+                reconnectDelay = SOCKET_RECONNECT_MIN_DELAY_MS;
+            });
+            socket.addEventListener("message", (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type !== "workspace.invalidate") {
+                        return;
+                    }
+                    void refreshLiveWorkspace(token, Array.isArray(message.groupIds) ? message.groupIds : undefined);
                 }
-                setError(requestError instanceof Error ? requestError.message : "Failed to refresh live data.");
+                catch {
+                    // Ignore malformed socket payloads and wait for the next valid event.
+                }
+            });
+            socket.addEventListener("close", () => {
+                socket = null;
+                scheduleReconnect();
+            });
+            socket.addEventListener("error", () => {
+                socket?.close();
+            });
+        };
+        const fallbackIntervalId = window.setInterval(() => {
+            if (document.visibilityState === "hidden") {
+                return;
             }
-            finally {
-                refreshing = false;
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                void refreshLiveWorkspace(token);
+            }
+        }, FALLBACK_REFRESH_INTERVAL_MS);
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                void refreshLiveWorkspace(token);
             }
         };
-        const intervalId = window.setInterval(() => {
-            void refreshLiveData();
-        }, AUTO_REFRESH_INTERVAL_MS);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        connect();
         return () => {
             active = false;
-            window.clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            clearReconnectTimer();
+            window.clearInterval(fallbackIntervalId);
+            socket?.close();
         };
-    }, [selectedGroupId, token]);
+    }, [token]);
     useEffect(() => {
         if (!profile) {
             return;
