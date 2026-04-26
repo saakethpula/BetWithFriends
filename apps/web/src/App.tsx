@@ -1165,19 +1165,19 @@ export default function App() {
                       </div>
                     </div>
 
-                      <div className="market-rail">
-                        <div className="market-rail-card">
-                          <span>Creator</span>
-                          <strong>Jamie</strong>
-                        </div>
-                        <div className="market-rail-card">
-                          <span>Venmo to</span>
-                          <strong>
-                            <a className="venmo-link" href={tutorialVenmoUrl} target="_blank" rel="noreferrer">
-                              @saakethp
-                            </a>
-                          </strong>
-                        </div>
+                    <div className="market-rail">
+                      <div className="market-rail-card">
+                        <span>Creator</span>
+                        <strong>Jamie</strong>
+                      </div>
+                      <div className="market-rail-card">
+                        <span>Venmo to</span>
+                        <strong>
+                          <a className="venmo-link" href={tutorialVenmoUrl} target="_blank" rel="noreferrer">
+                            @saakethp
+                          </a>
+                        </strong>
+                      </div>
                       <div className="market-rail-card">
                         <span>Mode</span>
                         <strong>Practice only</strong>
@@ -1529,20 +1529,20 @@ export default function App() {
                   </button>
                 </form>
 
-                <form onSubmit={handleJoinGroup} className="form-stack compact-form">
-                  <span className="subtle-copy">
-                    {referralJoinCode ? "Invite link detected for this group" : "Join another family group"}
-                  </span>
-                  <input
-                    value={joinCode}
-                    onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
-                    placeholder="Join code"
-                    required
-                  />
-                  <button className="ghost-button" type="submit" disabled={busyAction === "join-group"}>
-                    Join group
-                  </button>
-                </form>
+                {!referralJoinCode ? (
+                  <form onSubmit={handleJoinGroup} className="form-stack compact-form">
+                    <span className="subtle-copy">Join another family group</span>
+                    <input
+                      value={joinCode}
+                      onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                      placeholder="Join code"
+                      required
+                    />
+                    <button className="ghost-button" type="submit" disabled={busyAction === "join-group"}>
+                      Join group
+                    </button>
+                  </form>
+                ) : null}
 
                 {selectedGroup ? (
                   <div className="compact-form">
@@ -1617,15 +1617,6 @@ export default function App() {
                 <span className="metric-label">Visible markets</span>
                 <strong>{markets.length}</strong>
               </div>
-            </div>
-            <div className="compact-form family-summary-card">
-              <span className="subtle-copy">Family summary</span>
-              <strong>{selectedGroup?.role ?? "No active role"}</strong>
-              <p className="subtle-copy">
-                {selectedGroup
-                  ? `Join code ${selectedGroup.joinCode}. Use Manage family for switching groups, invites, and member controls.`
-                  : "Open Manage family to create or join your first group."}
-              </p>
             </div>
           </article>
 
