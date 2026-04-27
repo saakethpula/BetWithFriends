@@ -21,7 +21,7 @@ jobs:
           set -euo pipefail
           hour=$(TZ="America/New_York" date +%H)
           # Allow 08:00 through 19:59 ET
-          if [ "$hour" -lt 8 ] || [ "$hour" -ge 20 ]; then
+          if [ "$hour" -lt 8 ] || [ "$hour" -ge 23 ]; then
             echo "Outside 8am-8pm ET (current ET hour: $hour). Exiting."
             exit 0
           fi
