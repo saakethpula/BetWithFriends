@@ -2,6 +2,8 @@ export type FamilyGroup = {
   id: string;
   name: string;
   joinCode: string;
+  minBet: number;
+  maxBet: number;
   role: "ADMIN" | "MEMBER";
   members: Array<{
     id: string;
@@ -41,6 +43,7 @@ export type Market = {
   resolvesAt?: string | null;
   status: "OPEN" | "CLOSED" | "PENDING_RESOLUTION" | "RESOLVED";
   resolution?: boolean | null;
+  resolutionOutcomeId?: string | null;
   resolutionProposedBy?: {
     id: string;
     displayName: string;
@@ -58,7 +61,8 @@ export type Market = {
   positions: Array<{
     id: string;
     userId: string;
-    side: "YES" | "NO";
+    side?: "YES" | "NO" | null;
+    outcomeId?: string | null;
     status: "PENDING" | "CONFIRMED";
     amount: number;
     user?: {
@@ -67,22 +71,49 @@ export type Market = {
     };
   }>;
   summary: {
+    outcomes: Array<{
+      id: string;
+      label: string;
+      volume: number;
+      price: number;
+    }>;
     yesVolume: number;
     noVolume: number;
     totalVolume: number;
     yesPrice: number;
     noPrice: number;
-    leadingSide: "YES" | "NO";
+    leadingSide: string;
+    leadingOutcome: {
+      id: string;
+      label: string;
+      volume: number;
+      price: number;
+    };
   };
+  outcomes: Array<{
+    id: string;
+    label: string;
+    sortOrder: number;
+  }>;
   userPosition: {
     yesAmount: number;
     noAmount: number;
     totalAmount: number;
+    outcomeAmounts: Array<{
+      id: string;
+      label: string;
+      amount: number;
+    }>;
   };
   userPendingPosition: {
     yesAmount: number;
     noAmount: number;
     totalAmount: number;
+    outcomeAmounts: Array<{
+      id: string;
+      label: string;
+      amount: number;
+    }>;
   };
   userPayout: number;
   venmoRecipient: {
@@ -132,7 +163,8 @@ export type Market = {
     positionId: string;
     userId: string;
     displayName: string;
-    side: "YES" | "NO";
+    outcomeId?: string | null;
+    outcomeLabel: string;
     amount: number;
     createdAt: string;
   }>;
@@ -212,6 +244,13 @@ export function removeGroupMember(token: string, groupId: string, memberId: stri
   });
 }
 
+export function updateGroupBetLimits(token: string, groupId: string, minBet: number, maxBet: number) {
+  return request<{ group: FamilyGroup }>(`/api/groups/${groupId}/bet-limits`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ minBet, maxBet })
+  });
+}
+
 export function deleteGroup(token: string, groupId: string) {
   return request<{ deleted: boolean }>(`/api/groups/${groupId}`, token, {
     method: "DELETE"
@@ -231,6 +270,7 @@ export function createMarket(
     description?: string;
     closesAt: string;
     resolvesAt?: string;
+    outcomes?: string[];
   }
 ) {
   return request<Market>("/api/markets", token, {
@@ -242,7 +282,7 @@ export function createMarket(
 export function upsertPosition(
   token: string,
   marketId: string,
-  payload: { side: "YES" | "NO"; amount: number }
+  payload: { outcomeId: string; amount: number }
 ) {
   return request<Market>(`/api/markets/${marketId}/position`, token, {
     method: "PUT",
@@ -259,11 +299,11 @@ export function deleteMarket(token: string, marketId: string) {
 export function resolveMarket(
   token: string,
   marketId: string,
-  resolution: boolean
+  outcomeId: string
 ) {
   return request<Market>(`/api/markets/${marketId}/resolve`, token, {
     method: "POST",
-    body: JSON.stringify({ resolution })
+    body: JSON.stringify({ outcomeId })
   });
 }
 

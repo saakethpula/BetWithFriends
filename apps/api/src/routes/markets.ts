@@ -31,16 +31,24 @@ const createMarketSchema = z.object({
   question: z.string().min(10).max(200),
   description: z.string().max(1000).optional(),
   closesAt: z.string().datetime(),
-  resolvesAt: z.string().datetime().optional()
+  resolvesAt: z.string().datetime().optional(),
+  outcomes: z
+    .array(z.string().trim().min(1).max(40))
+    .min(2)
+    .max(5)
+    .optional()
+    .transform((outcomes) => outcomes ?? ["YES", "NO"])
 });
 
 const createPositionSchema = z.object({
-  side: z.nativeEnum(PositionSide),
+  outcomeId: z.string().min(1).optional(),
+  side: z.nativeEnum(PositionSide).optional(),
   amount: z.coerce.number().int().min(0).max(100000)
 });
 
 const resolveMarketSchema = z.object({
-  resolution: z.boolean()
+  outcomeId: z.string().min(1).optional(),
+  resolution: z.boolean().optional()
 });
 
 const recipientPayoutResponseSchema = z.object({
@@ -58,6 +66,7 @@ type SerializableMarket = {
   resolvesAt: Date | null;
   status: MarketStatus;
   resolution: boolean | null;
+  resolutionOutcomeId: string | null;
   resolutionProposedByUserId: string | null;
   resolutionProposedAt: Date | null;
   liquidityPool: number;
@@ -66,6 +75,8 @@ type SerializableMarket = {
   createdBy: { id: string; displayName: string; venmoHandle?: string | null };
   resolutionProposedBy: { id: string; displayName: string } | null;
   group: {
+    minBet: number;
+    maxBet: number;
     memberships: Array<{
       userId: string;
     }>;
@@ -75,7 +86,8 @@ type SerializableMarket = {
     id: string;
     marketId: string;
     userId: string;
-    side: PositionSide;
+    side: PositionSide | null;
+    outcomeId: string | null;
     status: PositionStatus;
     amount: number;
     createdAt: Date;
@@ -84,6 +96,11 @@ type SerializableMarket = {
       id: string;
       displayName: string;
     };
+  }>;
+  outcomes: Array<{
+    id: string;
+    label: string;
+    sortOrder: number;
   }>;
   payoutConfirmations: Array<{
     id: string;
@@ -117,6 +134,11 @@ const detailedMarketInclude = {
     }
   },
   targetUser: true,
+  outcomes: {
+    orderBy: {
+      sortOrder: "asc"
+    }
+  },
   positions: {
     include: {
       user: {
@@ -149,6 +171,8 @@ const detailedMarketInclude = {
   },
   group: {
     select: {
+      minBet: true,
+      maxBet: true,
       memberships: {
         select: {
           userId: true
@@ -196,11 +220,11 @@ function calculateRequiredResolutionConfirmations(groupMemberCount: number) {
 async function finalizeMarketResolution(
   tx: typeof prisma | Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">,
   market: Pick<SerializableMarket, "id" | "positions" | "resolvesAt">,
-  resolution: boolean
+  resolutionOutcomeId: string
 ) {
   const confirmedPositions = filterConfirmedPositions(market.positions);
-  const payouts = calculateResolutionPayouts(confirmedPositions, resolution);
-  const netResults = calculateNetResults(confirmedPositions, resolution);
+  const payouts = calculateResolutionPayouts(confirmedPositions, resolutionOutcomeId);
+  const netResults = calculateNetResults(confirmedPositions, resolutionOutcomeId);
 
   for (const [userId, netResult] of netResults.entries()) {
     if (netResult === 0) {
@@ -221,7 +245,7 @@ async function finalizeMarketResolution(
     where: { id: market.id },
     data: {
       status: MarketStatus.RESOLVED,
-      resolution,
+      resolutionOutcomeId,
       resolvesAt: market.resolvesAt ?? new Date(),
       payoutsFinalizedAt: payouts.size === 0 ? new Date() : null
     } as never
@@ -247,7 +271,7 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
   const { group, ...marketWithoutGroup } = market;
   const confirmedPositions = filterConfirmedPositions(market.positions);
   const pendingPositions = filterPendingPositions(market.positions);
-  const payouts = calculateResolutionPayouts(confirmedPositions, market.resolution);
+  const payouts = calculateResolutionPayouts(confirmedPositions, market.resolutionOutcomeId);
   const creatorPayouts = [...payouts.entries()]
     .map(([userId, amount]) => {
       const user = market.positions.find((position) => position.userId === userId)?.user;
@@ -263,7 +287,8 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
       positionId: position.id,
       userId: position.userId,
       displayName: position.user?.displayName ?? "Family member",
-      side: position.side,
+      outcomeId: position.outcomeId,
+      outcomeLabel: market.outcomes.find((outcome) => outcome.id === position.outcomeId)?.label ?? position.side ?? "Outcome",
       amount: position.amount,
       createdAt: position.createdAt
     }))
@@ -299,9 +324,9 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
   return {
     ...marketWithoutGroup,
     isGeneral: market.targetUserId === null,
-    summary: calculateMarketSummary(confirmedPositions),
-    userPosition: calculateUserPosition(confirmedPositions, currentUserId),
-    userPendingPosition: calculateUserPosition(pendingPositions, currentUserId),
+    summary: calculateMarketSummary(confirmedPositions, market.outcomes),
+    userPosition: calculateUserPosition(confirmedPositions, currentUserId, market.outcomes),
+    userPendingPosition: calculateUserPosition(pendingPositions, currentUserId, market.outcomes),
     userPayout: payouts.get(currentUserId) ?? 0,
     venmoRecipient: {
       userId: market.createdBy.id,
@@ -405,6 +430,12 @@ marketsRouter.post("/", asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Target user is not in this family group." });
   }
 
+  const normalizedOutcomes = [...new Set(input.outcomes.map((outcome) => outcome.trim()).filter(Boolean))];
+
+  if (normalizedOutcomes.length < 2 || normalizedOutcomes.length > 5) {
+    return res.status(400).json({ message: "Markets need between 2 and 5 unique outcomes." });
+  }
+
   const market = await prisma.market.create({
     data: {
       groupId: input.groupId,
@@ -413,7 +444,13 @@ marketsRouter.post("/", asyncHandler(async (req, res) => {
       question: input.question,
       description: input.description,
       closesAt: new Date(input.closesAt),
-      resolvesAt: input.resolvesAt ? new Date(input.resolvesAt) : null
+      resolvesAt: input.resolvesAt ? new Date(input.resolvesAt) : null,
+      outcomes: {
+        create: normalizedOutcomes.map((label, sortOrder) => ({
+          label,
+          sortOrder
+        }))
+      }
     },
     include: detailedMarketInclude
   } as never) as unknown as SerializableMarket;
@@ -458,38 +495,57 @@ marketsRouter.put("/:marketId/position", asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "This market is not open for trading." });
   }
 
-  const existingPositions = market.positions.filter((position) => position.userId === currentUser.id);
-  const existingTotalAmount = existingPositions.reduce((total, position) => total + position.amount, 0);
-  const existingSide = existingPositions[0]?.side ?? null;
+  const requestedOutcomeId =
+    input.outcomeId ??
+    market.outcomes.find((outcome) => outcome.label.toUpperCase() === input.side)?.id;
+  const requestedOutcome = market.outcomes.find((outcome) => outcome.id === requestedOutcomeId);
 
-  if (existingTotalAmount > 0 && input.amount < existingTotalAmount) {
+  if (!requestedOutcome) {
+    return res.status(400).json({ message: "Choose a valid outcome for this market." });
+  }
+
+  const existingPositions = market.positions.filter((position) => position.userId === currentUser.id);
+  const confirmedPositions = filterConfirmedPositions(existingPositions);
+  const pendingPositions = filterPendingPositions(existingPositions);
+  const confirmedTotalAmount = confirmedPositions.reduce((total, position) => total + position.amount, 0);
+  const pendingTotalAmount = pendingPositions.reduce((total, position) => total + position.amount, 0);
+  const liveOrPendingTotalAmount = confirmedTotalAmount + pendingTotalAmount;
+  const existingOutcomeId = existingPositions[0]?.outcomeId ?? null;
+
+  if (liveOrPendingTotalAmount > 0 && input.amount < liveOrPendingTotalAmount) {
     return res.status(400).json({
       message: "You can only increase your position after it has been placed."
     });
   }
 
-  if (existingSide && input.amount > 0 && input.side !== existingSide) {
+  if (existingOutcomeId && input.amount > 0 && requestedOutcome.id !== existingOutcomeId) {
     return res.status(400).json({
-      message: "Your side is locked after your first bet. You can only add more to the same side."
+      message: "Your outcome is locked after your first bet. You can only add more to the same outcome."
+    });
+  }
+
+  const amountToAdd = input.amount - liveOrPendingTotalAmount;
+
+  if (amountToAdd === 0) {
+    return res.status(400).json({ message: "Enter a larger amount to add to this position." });
+  }
+
+  if (amountToAdd < market.group.minBet || amountToAdd > market.group.maxBet) {
+    return res.status(400).json({
+      message: `Your added stake must be between ${market.group.minBet} and ${market.group.maxBet}.`
     });
   }
 
   const updatedMarket = await prisma.$transaction(async (tx) => {
-    await tx.position.deleteMany({
-      where: {
-        marketId,
-        userId: currentUser.id
-      }
-    });
-
-    if (input.amount > 0) {
+    if (amountToAdd > 0) {
       await tx.position.create({
         data: {
           marketId,
           userId: currentUser.id,
-          side: input.side,
+          side: requestedOutcome.label.toUpperCase() === "YES" ? PositionSide.YES : requestedOutcome.label.toUpperCase() === "NO" ? PositionSide.NO : null,
+          outcomeId: requestedOutcome.id,
           status: PositionStatus.PENDING,
-          amount: input.amount
+          amount: amountToAdd
         }
       });
     }
@@ -609,12 +665,26 @@ marketsRouter.post("/:marketId/resolve", asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "This market is already waiting for resolution confirmations." });
   }
 
+  if (!input.outcomeId && input.resolution === undefined) {
+    return res.status(400).json({ message: "Choose an outcome to resolve this market." });
+  }
+
+  const resolutionOutcomeId =
+    input.outcomeId ??
+    market.outcomes.find((outcome) => outcome.label.toUpperCase() === (input.resolution ? "YES" : "NO"))?.id;
+  const resolutionOutcome = market.outcomes.find((outcome) => outcome.id === resolutionOutcomeId);
+
+  if (!resolutionOutcome) {
+    return res.status(400).json({ message: "Choose a valid outcome to resolve this market." });
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     await tx.market.update({
       where: { id: marketId },
       data: {
         status: MarketStatus.PENDING_RESOLUTION,
-        resolution: input.resolution,
+        resolution: resolutionOutcome.label.toUpperCase() === "YES" ? true : resolutionOutcome.label.toUpperCase() === "NO" ? false : null,
+        resolutionOutcomeId: resolutionOutcome.id,
         resolutionProposedByUserId: currentUser.id,
         resolutionProposedAt: new Date(),
         payoutsFinalizedAt: null
@@ -660,7 +730,7 @@ marketsRouter.post("/:marketId/resolution/confirm", asyncHandler(async (req, res
     });
   }
 
-  if (market.status !== MarketStatus.PENDING_RESOLUTION || market.resolution === null) {
+  if (market.status !== MarketStatus.PENDING_RESOLUTION || !market.resolutionOutcomeId) {
     return res.status(400).json({ message: "This market is not waiting for resolution confirmations." });
   }
 
@@ -672,7 +742,7 @@ marketsRouter.post("/:marketId/resolution/confirm", asyncHandler(async (req, res
     return res.status(400).json({ message: "You have already confirmed this resolution." });
   }
 
-  const proposedResolution = market.resolution;
+  const proposedResolutionOutcomeId = market.resolutionOutcomeId;
 
   const updatedMarket = await prisma.$transaction(async (tx) => {
     await (tx as any).marketResolutionConfirmation.create({
@@ -689,7 +759,7 @@ marketsRouter.post("/:marketId/resolution/confirm", asyncHandler(async (req, res
     const requiredResolutionConfirmations = calculateRequiredResolutionConfirmations(market.group.memberships.length);
 
     if (confirmationCount >= requiredResolutionConfirmations) {
-      await finalizeMarketResolution(tx, market, proposedResolution);
+      await finalizeMarketResolution(tx, market, proposedResolutionOutcomeId);
     }
 
     return findDetailedMarketOrThrow(tx, marketId);

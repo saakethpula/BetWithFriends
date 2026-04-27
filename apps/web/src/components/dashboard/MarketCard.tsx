@@ -13,7 +13,7 @@ type MarketCardProps = {
     onSavePosition: (marketId: string) => Promise<void>;
     onConfirmPosition: (marketId: string, positionId: string) => Promise<void>;
     onRejectPosition: (marketId: string, positionId: string) => Promise<void>;
-    onResolveMarket: (marketId: string, resolution: boolean) => Promise<void>;
+    onResolveMarket: (marketId: string, outcomeId: string) => Promise<void>;
     onConfirmMarketResolution: (marketId: string) => Promise<void>;
     onDeleteMarket: (marketId: string) => Promise<void>;
     onMarkPayoutSent: (marketId: string, payoutId: string) => Promise<void>;
@@ -39,11 +39,15 @@ export function MarketCard({
     const canRemove = market.createdBy.id === profile.user.id || selectedGroupRole === "ADMIN";
     const recipientHandle = normalizeVenmoHandle(market.venmoRecipient.venmoHandle);
     const recipientUrl = getVenmoUrl(market.venmoRecipient.venmoHandle);
-    const resolutionSide = market.resolution ? "YES" : "NO";
+    const resolutionOutcome = market.outcomes.find((outcome) => outcome.id === market.resolutionOutcomeId);
+    const resolutionLabel = resolutionOutcome?.label ?? (market.resolution ? "YES" : "NO");
     const canConfirmResolution =
         market.status === "PENDING_RESOLUTION" &&
         market.resolutionProposedBy?.id !== profile.user.id &&
         !market.userResolutionConfirmation;
+    const existingUserTotal = market.userPosition.totalAmount + market.userPendingPosition.totalAmount;
+    const draftAmount = Number(draft.amount || "0");
+    const topUpAmount = Math.max(0, draftAmount - existingUserTotal);
 
     return (
         <article className="market-panel">
@@ -61,8 +65,8 @@ export function MarketCard({
 
             <div className="market-stats">
                 <div>
-                    <span>YES</span>
-                    <strong>{Math.round(market.summary.yesPrice * 100)}%</strong>
+                    <span>Leader</span>
+                    <strong>{market.summary.leadingOutcome.label}</strong>
                 </div>
                 <div>
                     <span>Total pot</span>
@@ -84,8 +88,8 @@ export function MarketCard({
                     <strong>{market.createdBy.displayName}</strong>
                 </div>
                 <div className="market-rail-card">
-                    <span>Leading side</span>
-                    <strong>{market.summary.leadingSide}</strong>
+                    <span>Leading outcome</span>
+                    <strong>{market.summary.leadingOutcome.label}</strong>
                 </div>
                 <div className="market-rail-card">
                     <span>Payout to you</span>
@@ -95,20 +99,16 @@ export function MarketCard({
 
             <div className="trade-box">
                 <div className="trade-toggle">
-                    <button
-                        type="button"
-                        className={draft.side === "YES" ? "toggle-button active-yes" : "toggle-button"}
-                        onClick={() => onUpdateTradeDraft(market.id, { side: "YES" })}
-                    >
-                        YES
-                    </button>
-                    <button
-                        type="button"
-                        className={draft.side === "NO" ? "toggle-button active-no" : "toggle-button"}
-                        onClick={() => onUpdateTradeDraft(market.id, { side: "NO" })}
-                    >
-                        NO
-                    </button>
+                    {market.outcomes.map((outcome) => (
+                        <button
+                            key={outcome.id}
+                            type="button"
+                            className={draft.outcomeId === outcome.id ? "toggle-button active-yes" : "toggle-button"}
+                            onClick={() => onUpdateTradeDraft(market.id, { outcomeId: outcome.id })}
+                        >
+                            {outcome.label}
+                        </button>
+                    ))}
                 </div>
                 <input
                     type="number"
@@ -127,7 +127,7 @@ export function MarketCard({
                 </button>
                 {market.status === "OPEN" ? (
                     <p className="trade-note">
-                        After saving, send {formatMoney(Number(draft.amount || "0"))} to{" "}
+                        After saving, send {formatMoney(topUpAmount)} to{" "}
                         {recipientUrl ? (
                             <a className="venmo-link" href={recipientUrl} target="_blank" rel="noreferrer">
                                 @{recipientHandle}
@@ -165,7 +165,7 @@ export function MarketCard({
                                 <div>
                                     <span>{pending.displayName}</span>
                                     <small>
-                                        {pending.side} for {formatMoney(pending.amount)}
+                                        {pending.outcomeLabel} for {formatMoney(pending.amount)}
                                     </small>
                                 </div>
                                 <div className="market-footer-actions">
@@ -197,7 +197,7 @@ export function MarketCard({
                     <div className="settlement-heading">
                         <span className="kicker">Resolution check</span>
                         <strong>
-                            {market.resolutionProposedBy?.displayName ?? "An admin"} resolved this as {resolutionSide}
+                            {market.resolutionProposedBy?.displayName ?? "An admin"} resolved this as {resolutionLabel}
                         </strong>
                     </div>
                     <p className="subtle-copy">
@@ -211,7 +211,7 @@ export function MarketCard({
                                         <span>{confirmation.displayName}</span>
                                         <small>Confirmed resolution</small>
                                     </div>
-                                    <strong>{resolutionSide}</strong>
+                                    <strong>{resolutionLabel}</strong>
                                 </div>
                             ))}
                         </div>
@@ -224,7 +224,7 @@ export function MarketCard({
                                 disabled={busyAction === `resolution-confirm-${market.id}`}
                                 onClick={() => void onConfirmMarketResolution(market.id)}
                             >
-                                Confirm {resolutionSide}
+                                Confirm {resolutionLabel}
                             </button>
                         </div>
                     ) : market.userResolutionConfirmation ? (
@@ -318,7 +318,7 @@ export function MarketCard({
 
             <div className="market-footer">
                 <span className="subtle-copy">
-                    Current split: {formatMoney(market.userPosition.yesAmount)} YES / {formatMoney(market.userPosition.noAmount)} NO
+                    Current split: {market.summary.outcomes.map((outcome) => `${outcome.label} ${formatMoney(outcome.volume)}`).join(" / ")}
                 </span>
                 <div className="market-footer-actions">
                     {canRemove ? (
@@ -333,22 +333,17 @@ export function MarketCard({
                     ) : null}
                     {selectedGroupRole === "ADMIN" && (market.status === "OPEN" || market.status === "CLOSED") ? (
                         <>
-                            <button
-                                className="ghost-button yes-outline"
-                                type="button"
-                                disabled={busyAction === `resolve-${market.id}`}
-                                onClick={() => void onResolveMarket(market.id, true)}
-                            >
-                                Resolve YES
-                            </button>
-                            <button
-                                className="ghost-button no-outline"
-                                type="button"
-                                disabled={busyAction === `resolve-${market.id}`}
-                                onClick={() => void onResolveMarket(market.id, false)}
-                            >
-                                Resolve NO
-                            </button>
+                            {market.outcomes.map((outcome) => (
+                                <button
+                                    key={outcome.id}
+                                    className="ghost-button yes-outline"
+                                    type="button"
+                                    disabled={busyAction === `resolve-${market.id}`}
+                                    onClick={() => void onResolveMarket(market.id, outcome.id)}
+                                >
+                                    Resolve {outcome.label}
+                                </button>
+                            ))}
                         </>
                     ) : null}
                 </div>

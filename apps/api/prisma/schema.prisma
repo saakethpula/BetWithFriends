@@ -60,6 +60,8 @@ model FamilyGroup {
   id          String            @id @default(cuid())
   name        String
   joinCode    String            @unique
+  minBet      Int               @default(1)
+  maxBet      Int               @default(100000)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   memberships GroupMembership[]
@@ -89,6 +91,7 @@ model Market {
   resolvesAt                 DateTime?
   status                     MarketStatus                   @default(OPEN)
   resolution                 Boolean?
+  resolutionOutcomeId        String?
   resolutionProposedByUserId String?
   resolutionProposedAt       DateTime?
   liquidityPool              Int                            @default(100)
@@ -98,25 +101,44 @@ model Market {
   group                      FamilyGroup                    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdBy                  User                           @relation("CreatedMarkets", fields: [createdByUserId], references: [id], onDelete: Cascade)
   targetUser                 User?                          @relation("TargetMarkets", fields: [targetUserId], references: [id], onDelete: Cascade)
+  resolutionOutcome          MarketOutcome?                 @relation("ResolvedMarketOutcome", fields: [resolutionOutcomeId], references: [id], onDelete: SetNull)
   resolutionProposedBy       User?                          @relation("ProposedResolutionMarkets", fields: [resolutionProposedByUserId], references: [id], onDelete: SetNull)
+  outcomes                   MarketOutcome[]
   positions                  Position[]
   payoutConfirmations        MarketPayoutConfirmation[]
   resolutionConfirmations    MarketResolutionConfirmation[]
+}
+
+model MarketOutcome {
+  id              String     @id @default(cuid())
+  marketId        String
+  label           String
+  sortOrder       Int
+  createdAt       DateTime   @default(now())
+  market          Market     @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  positions       Position[]
+  resolvedMarkets Market[]   @relation("ResolvedMarketOutcome")
+
+  @@unique([marketId, sortOrder])
+  @@index([marketId])
 }
 
 model Position {
   id          String         @id @default(cuid())
   marketId    String
   userId      String
-  side        PositionSide
+  side        PositionSide?
+  outcomeId   String?
   status      PositionStatus @default(PENDING)
   amount      Int
   createdAt   DateTime       @default(now())
   confirmedAt DateTime?
   market      Market         @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  outcome     MarketOutcome? @relation(fields: [outcomeId], references: [id], onDelete: SetNull)
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([marketId])
+  @@index([outcomeId])
   @@index([userId])
 }
 

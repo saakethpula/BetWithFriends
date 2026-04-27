@@ -1,7 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { confirmMarketResolution, confirmPosition, createGroup, createMarket, deleteGroup, deleteMarket, getCurrentUser, getMarkets, getRealtimeWebSocketUrl, joinGroup, markPayoutSent, removeGroupMember, rejectPosition, respondToPayout, resolveMarket, updateTutorialCompletion, updateVenmoHandle, upsertPosition } from "./lib/api";
+import { confirmMarketResolution, confirmPosition, createGroup, createMarket, deleteGroup, deleteMarket, getCurrentUser, getMarkets, getRealtimeWebSocketUrl, joinGroup, markPayoutSent, removeGroupMember, rejectPosition, respondToPayout, resolveMarket, updateGroupBetLimits, updateTutorialCompletion, updateVenmoHandle, upsertPosition } from "./lib/api";
 import { DashboardScreen } from "./components/dashboard/DashboardScreen";
 import { LandingScreen } from "./components/LandingScreen";
 import { OnboardingScreen } from "./components/onboarding/OnboardingScreen";
@@ -43,6 +43,9 @@ export default function App() {
     const [question, setQuestion] = useState("");
     const [description, setDescription] = useState("");
     const [targetUserId, setTargetUserId] = useState("");
+    const [outcomeLabels, setOutcomeLabels] = useState(["YES", "NO"]);
+    const [minBet, setMinBet] = useState("1");
+    const [maxBet, setMaxBet] = useState("100000");
     const [closesAt, setClosesAt] = useState(tomorrowAtNoon());
     const [statusMessage, setStatusMessage] = useState("Sign in to launch your prediction desk.");
     const [error, setError] = useState("");
@@ -52,7 +55,7 @@ export default function App() {
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [groupSetupMode, setGroupSetupMode] = useState("join");
-    const [tutorialDraft, setTutorialDraft] = useState({ side: "YES", amount: DEFAULT_TRADE_AMOUNT });
+    const [tutorialDraft, setTutorialDraft] = useState({ outcomeId: "YES", side: "YES", amount: DEFAULT_TRADE_AMOUNT });
     const [tutorialPracticeStep, setTutorialPracticeStep] = useState("pick-side");
     const [tutorialHoverTarget, setTutorialHoverTarget] = useState(null);
     const [tutorialBetPlaced, setTutorialBetPlaced] = useState(false);
@@ -108,6 +111,11 @@ export default function App() {
         const nextProfile = await getCurrentUser(accessToken);
         setProfile(nextProfile);
         setVenmoHandle(nextProfile.user.venmoHandle ?? "");
+        const activeGroup = nextProfile.groups.find((group) => group.id === selectedGroupIdRef.current) ?? nextProfile.groups[0];
+        if (activeGroup) {
+            setMinBet(String(activeGroup.minBet));
+            setMaxBet(String(activeGroup.maxBet));
+        }
         return nextProfile;
     }
     async function refreshMarkets(accessToken, groupId) {
@@ -117,8 +125,13 @@ export default function App() {
             const nextDrafts = { ...currentDrafts };
             for (const market of nextMarkets) {
                 if (!nextDrafts[market.id]) {
+                    const firstOutcome = market.outcomes[0];
+                    const leadingUserOutcome = market.userPosition.outcomeAmounts
+                        .filter((outcome) => outcome.amount > 0)
+                        .sort((left, right) => right.amount - left.amount)[0];
                     nextDrafts[market.id] = {
-                        side: market.userPosition.noAmount > market.userPosition.yesAmount ? "NO" : "YES",
+                        outcomeId: leadingUserOutcome?.id ?? firstOutcome?.id ?? "",
+                        side: leadingUserOutcome?.label === "NO" ? "NO" : "YES",
                         amount: market.userPosition.totalAmount > 0
                             ? String(market.userPosition.totalAmount)
                             : DEFAULT_TRADE_AMOUNT
@@ -363,6 +376,7 @@ export default function App() {
         setTradeDrafts((currentDrafts) => ({
             ...currentDrafts,
             [marketId]: {
+                outcomeId: currentDrafts[marketId]?.outcomeId ?? "",
                 side: currentDrafts[marketId]?.side ?? "YES",
                 amount: currentDrafts[marketId]?.amount ?? DEFAULT_TRADE_AMOUNT,
                 ...patch
@@ -372,7 +386,8 @@ export default function App() {
     function handleTutorialSideChange(side) {
         setTutorialDraft((current) => ({
             ...current,
-            side
+            side,
+            outcomeId: side
         }));
         if (tutorialPracticeStep === "pick-side") {
             setTutorialPracticeStep("enter-amount");
@@ -543,22 +558,46 @@ export default function App() {
             setBusyAction("");
         }
     }
+    async function handleSaveBetLimits(event) {
+        event.preventDefault();
+        setError("");
+        setBusyAction("bet-limits");
+        try {
+            await updateGroupBetLimits(token, selectedGroupId, Number(minBet || "0"), Number(maxBet || "0"));
+            await refreshProfile(token);
+            setStatusMessage("Bet limits updated.");
+        }
+        catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : "Failed to update bet limits.");
+        }
+        finally {
+            setBusyAction("");
+        }
+    }
     async function handleCreateMarket(event) {
         event.preventDefault();
         setError("");
         setBusyAction("create-market");
+        const normalizedOutcomes = [...new Set(outcomeLabels.map((label) => label.trim()).filter(Boolean))];
+        if (normalizedOutcomes.length < 2 || normalizedOutcomes.length > 5) {
+            setError("Add between 2 and 5 unique outcomes.");
+            setBusyAction("");
+            return;
+        }
         try {
             await createMarket(token, {
                 groupId: selectedGroupId,
                 targetUserId: targetUserId === GENERAL_MARKET_VALUE ? null : targetUserId,
                 question,
                 description,
-                closesAt: new Date(closesAt).toISOString()
+                closesAt: new Date(closesAt).toISOString(),
+                outcomes: normalizedOutcomes
             });
             await refreshMarkets(token, selectedGroupId);
             setQuestion("");
             setDescription("");
             setTargetUserId("");
+            setOutcomeLabels(["YES", "NO"]);
             setClosesAt(tomorrowAtNoon());
             setStatusMessage("Market published.");
         }
@@ -570,18 +609,24 @@ export default function App() {
         }
     }
     async function handleSavePosition(marketId) {
-        const draft = tradeDrafts[marketId] ?? { side: "YES", amount: DEFAULT_TRADE_AMOUNT };
+        const market = markets.find((entry) => entry.id === marketId);
+        const draft = tradeDrafts[marketId] ?? { outcomeId: market?.outcomes[0]?.id ?? "", side: "YES", amount: DEFAULT_TRADE_AMOUNT };
+        const requestedAmount = Number(draft.amount || "0");
+        const existingAmount = market
+            ? market.userPosition.totalAmount + market.userPendingPosition.totalAmount
+            : 0;
+        const topUpAmount = Math.max(0, requestedAmount - existingAmount);
         setError("");
         setBusyAction(`position-${marketId}`);
         try {
             const updatedMarket = await upsertPosition(token, marketId, {
-                side: draft.side,
-                amount: Number(draft.amount || "0")
+                outcomeId: draft.outcomeId,
+                amount: requestedAmount
             });
             await refreshWorkspace(token, selectedGroupId);
-            setStatusMessage(Number(draft.amount || "0") > 0
-                ? `Position submitted. Send ${formatMoney(Number(draft.amount || "0"))} using the Venmo link for ${updatedMarket.venmoRecipient.venmoHandle ? `@${normalizeVenmoHandle(updatedMarket.venmoRecipient.venmoHandle)}` : updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
-                : "Position removed.");
+            setStatusMessage(topUpAmount > 0
+                ? `Position submitted. Send ${formatMoney(topUpAmount)} using the Venmo link for ${updatedMarket.venmoRecipient.venmoHandle ? `@${normalizeVenmoHandle(updatedMarket.venmoRecipient.venmoHandle)}` : updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
+                : "Enter a larger amount to add to this position.");
         }
         catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : "Failed to save position.");
@@ -620,11 +665,11 @@ export default function App() {
             setBusyAction("");
         }
     }
-    async function handleResolve(marketId, resolution) {
+    async function handleResolve(marketId, outcomeId) {
         setError("");
         setBusyAction(`resolve-${marketId}`);
         try {
-            await resolveMarket(token, marketId, resolution);
+            await resolveMarket(token, marketId, outcomeId);
             await refreshWorkspace(token, selectedGroupId);
             setStatusMessage("Resolution proposed. 30% of the group needs to confirm it before settlement runs.");
         }
@@ -718,9 +763,9 @@ export default function App() {
     if (showOnboarding) {
         return (_jsx(OnboardingScreen, { profile: profile, statusMessage: statusMessage, error: error, busyAction: busyAction, needsVenmoHandle: needsVenmoHandle, needsFirstGroup: needsFirstGroup, onboardingReady: onboardingReady, canStartPractice: canStartPractice, onboardingStep: onboardingStep, setOnboardingStep: setOnboardingStep, skipGroupSetupStep: skipGroupSetupStep, groupSetupMode: groupSetupMode, setGroupSetupMode: setGroupSetupMode, referralJoinCode: referralJoinCode, joinCode: joinCode, setJoinCode: setJoinCode, groupName: groupName, setGroupName: setGroupName, venmoHandle: venmoHandle, setVenmoHandle: setVenmoHandle, tutorialDraft: tutorialDraft, tutorialAmountNumber: tutorialAmountNumber, tutorialPracticeStep: tutorialPracticeStep, tutorialHoverTarget: tutorialHoverTarget, setTutorialHoverTarget: setTutorialHoverTarget, tutorialBetPlaced: tutorialBetPlaced, tutorialPrompt: tutorialPrompt, tutorialVenmoUrl: tutorialVenmoUrl, onTutorialSideChange: handleTutorialSideChange, onTutorialAmountChange: handleTutorialAmountChange, onTutorialPlaceBet: handleTutorialPlaceBet, onTutorialPaymentSent: handleTutorialPaymentSent, onSaveVenmoHandle: handleSaveVenmoHandle, onJoinGroup: handleJoinGroup, onCreateGroup: handleCreateGroup, onCompleteTutorial: handleTutorialCompletion }));
     }
-    return (_jsx(DashboardScreen, { profile: profile, selectedGroup: selectedGroup, selectedGroupId: selectedGroupId, setSelectedGroupId: setSelectedGroupId, markets: markets, visibleMembers: visibleMembers, tradeDrafts: tradeDrafts, question: question, setQuestion: setQuestion, description: description, setDescription: setDescription, targetUserId: targetUserId, setTargetUserId: setTargetUserId, closesAt: closesAt, setClosesAt: setClosesAt, groupName: groupName, setGroupName: setGroupName, joinCode: joinCode, setJoinCode: setJoinCode, referralJoinCode: referralJoinCode, venmoHandle: venmoHandle, setVenmoHandle: setVenmoHandle, themePreference: themePreference, resolvedTheme: resolvedTheme, setThemePreference: setThemePreference, selectedGroupInviteUrl: selectedGroupInviteUrl, busyAction: busyAction, error: error, settingsOpen: settingsOpen, setSettingsOpen: setSettingsOpen, familyManagerOpen: familyManagerOpen, setFamilyManagerOpen: setFamilyManagerOpen, onOpenFamilyManager: openFamilyManager, onLogout: () => logout({
+    return (_jsx(DashboardScreen, { profile: profile, selectedGroup: selectedGroup, selectedGroupId: selectedGroupId, setSelectedGroupId: setSelectedGroupId, markets: markets, visibleMembers: visibleMembers, tradeDrafts: tradeDrafts, question: question, setQuestion: setQuestion, description: description, setDescription: setDescription, targetUserId: targetUserId, setTargetUserId: setTargetUserId, outcomeLabels: outcomeLabels, setOutcomeLabels: setOutcomeLabels, closesAt: closesAt, setClosesAt: setClosesAt, groupName: groupName, setGroupName: setGroupName, joinCode: joinCode, setJoinCode: setJoinCode, referralJoinCode: referralJoinCode, venmoHandle: venmoHandle, setVenmoHandle: setVenmoHandle, minBet: minBet, setMinBet: setMinBet, maxBet: maxBet, setMaxBet: setMaxBet, themePreference: themePreference, resolvedTheme: resolvedTheme, setThemePreference: setThemePreference, selectedGroupInviteUrl: selectedGroupInviteUrl, busyAction: busyAction, error: error, settingsOpen: settingsOpen, setSettingsOpen: setSettingsOpen, familyManagerOpen: familyManagerOpen, setFamilyManagerOpen: setFamilyManagerOpen, onOpenFamilyManager: openFamilyManager, onLogout: () => logout({
             logoutParams: {
                 returnTo: window.location.origin
             }
-        }), onSaveVenmoHandle: handleSaveVenmoHandle, onRestartTutorial: handleRestartTutorial, onCreateGroup: handleCreateGroup, onJoinGroup: handleJoinGroup, onCopyInviteLink: copyInviteLink, onRemoveGroupMember: handleRemoveGroupMember, onDeleteGroup: handleDeleteGroup, onCreateMarket: handleCreateMarket, onUpdateTradeDraft: updateTradeDraft, onSavePosition: handleSavePosition, onConfirmPosition: handleConfirmPosition, onRejectPosition: handleRejectPosition, onResolve: handleResolve, onConfirmMarketResolution: handleConfirmMarketResolution, onDeleteMarket: handleDeleteMarket, onMarkPayoutSent: handleMarkPayoutSent, onRespondToPayout: handleRespondToPayout }));
+        }), onSaveVenmoHandle: handleSaveVenmoHandle, onRestartTutorial: handleRestartTutorial, onCreateGroup: handleCreateGroup, onJoinGroup: handleJoinGroup, onCopyInviteLink: copyInviteLink, onRemoveGroupMember: handleRemoveGroupMember, onDeleteGroup: handleDeleteGroup, onSaveBetLimits: handleSaveBetLimits, onCreateMarket: handleCreateMarket, onUpdateTradeDraft: updateTradeDraft, onSavePosition: handleSavePosition, onConfirmPosition: handleConfirmPosition, onRejectPosition: handleRejectPosition, onResolve: handleResolve, onConfirmMarketResolution: handleConfirmMarketResolution, onDeleteMarket: handleDeleteMarket, onMarkPayoutSent: handleMarkPayoutSent, onRespondToPayout: handleRespondToPayout }));
 }

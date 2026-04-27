@@ -57,6 +57,8 @@ meRouter.get("/", asyncHandler(async (req, res) => {
       id: membership.group.id,
       name: membership.group.name,
       joinCode: membership.group.joinCode,
+      minBet: membership.group.minBet,
+      maxBet: membership.group.maxBet,
       role: membership.role,
       members: membership.group.memberships.map((groupMembership) => ({
         id: groupMembership.user.id,

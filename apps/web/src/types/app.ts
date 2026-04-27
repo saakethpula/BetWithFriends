@@ -1,5 +1,6 @@
 export type TradeDraft = {
-    side: "YES" | "NO";
+    outcomeId: string;
+    side?: "YES" | "NO";
     amount: string;
 };
 

@@ -16,6 +16,13 @@ const joinGroupSchema = z.object({
   joinCode: z.string().min(6).max(12)
 });
 
+const updateBetLimitsSchema = z.object({
+  minBet: z.coerce.number().int().min(1).max(100000),
+  maxBet: z.coerce.number().int().min(1).max(100000)
+}).refine((value) => value.minBet <= value.maxBet, {
+  message: "Minimum bet must be less than or equal to maximum bet."
+});
+
 type AdminMembershipCheck =
   | { ok: true; membership: { role: GroupRole } }
   | { ok: false; error: { status: number; message: string } };
@@ -139,6 +146,28 @@ groupsRouter.delete("/:groupId/members/:memberId", asyncHandler(async (req, res)
   void notifyUsers([memberId], "group.removed", [groupId]);
 
   return res.json({ removed: true });
+}));
+
+groupsRouter.patch("/:groupId/bet-limits", asyncHandler(async (req, res) => {
+  const currentUser = req.currentUser!;
+  const groupId = getParam(req.params.groupId);
+  const input = updateBetLimitsSchema.parse(req.body);
+  const adminCheck = await requireAdminMembership(groupId, currentUser.id);
+
+  if (!adminCheck.ok) {
+    return res.status(adminCheck.error.status).json({ message: adminCheck.error.message });
+  }
+
+  const group = await prisma.familyGroup.update({
+    where: { id: groupId },
+    data: {
+      minBet: input.minBet,
+      maxBet: input.maxBet
+    }
+  });
+
+  void notifyGroupMembers(groupId, "group.bet_limits.updated");
+  return res.json({ group });
 }));
 
 groupsRouter.delete("/:groupId", asyncHandler(async (req, res) => {

@@ -12,12 +12,17 @@ type FamilyManagerModalProps = {
     setJoinCode: (value: string) => void;
     referralJoinCode: string;
     selectedGroupInviteUrl: string;
+    minBet: string;
+    setMinBet: (value: string) => void;
+    maxBet: string;
+    setMaxBet: (value: string) => void;
     onClose: () => void;
     onSelectGroup: (groupId: string) => void;
     onJoinGroup: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onCopyInviteLink: (joinCode: string) => Promise<void>;
     onRemoveMember: (groupId: string, memberId: string, memberName: string) => Promise<void>;
     onDeleteGroup: (groupId: string, groupName: string) => Promise<void>;
+    onSaveBetLimits: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 };
 
 export function FamilyManagerModal({
@@ -31,12 +36,17 @@ export function FamilyManagerModal({
     setJoinCode,
     referralJoinCode,
     selectedGroupInviteUrl,
+    minBet,
+    setMinBet,
+    maxBet,
+    setMaxBet,
     onClose,
     onSelectGroup,
     onJoinGroup,
     onCopyInviteLink,
     onRemoveMember,
-    onDeleteGroup
+    onDeleteGroup,
+    onSaveBetLimits
 }: FamilyManagerModalProps) {
     if (!open) {
         return null;
@@ -137,6 +147,28 @@ export function FamilyManagerModal({
 
                         {selectedGroup && selectedGroup.role === "ADMIN" ? (
                             <div className="form-stack compact-form">
+                                <form className="form-stack" onSubmit={(event) => void onSaveBetLimits(event)}>
+                                    <span className="subtle-copy">Bet limits</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={minBet}
+                                        onChange={(event) => setMinBet(event.target.value)}
+                                        placeholder="Minimum bet"
+                                        required
+                                    />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={maxBet}
+                                        onChange={(event) => setMaxBet(event.target.value)}
+                                        placeholder="Maximum bet"
+                                        required
+                                    />
+                                    <button className="ghost-button" type="submit" disabled={busyAction === "bet-limits"}>
+                                        Save limits
+                                    </button>
+                                </form>
                                 <span className="subtle-copy">Manage members</span>
                                 {selectedGroup.members
                                     .filter((member) => member.id !== profile.user.id)

@@ -2,7 +2,7 @@ import { DEFAULT_TRADE_AMOUNT } from "../constants/app";
 export function resetTutorialState() {
     return {
         onboardingStep: 0,
-        tutorialDraft: { side: "YES", amount: DEFAULT_TRADE_AMOUNT },
+        tutorialDraft: { outcomeId: "YES", side: "YES", amount: DEFAULT_TRADE_AMOUNT },
         tutorialPracticeStep: "pick-side",
         tutorialBetPlaced: false
     };

@@ -55,6 +55,12 @@ export function removeGroupMember(token, groupId, memberId) {
         method: "DELETE"
     });
 }
+export function updateGroupBetLimits(token, groupId, minBet, maxBet) {
+    return request(`/api/groups/${groupId}/bet-limits`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ minBet, maxBet })
+    });
+}
 export function deleteGroup(token, groupId) {
     return request(`/api/groups/${groupId}`, token, {
         method: "DELETE"
@@ -80,10 +86,10 @@ export function deleteMarket(token, marketId) {
         method: "DELETE"
     });
 }
-export function resolveMarket(token, marketId, resolution) {
+export function resolveMarket(token, marketId, outcomeId) {
     return request(`/api/markets/${marketId}/resolve`, token, {
         method: "POST",
-        body: JSON.stringify({ resolution })
+        body: JSON.stringify({ outcomeId })
     });
 }
 export function confirmMarketResolution(token, marketId) {

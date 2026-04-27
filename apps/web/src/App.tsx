@@ -16,6 +16,7 @@ import {
     rejectPosition,
     respondToPayout,
     resolveMarket,
+    updateGroupBetLimits,
     updateTutorialCompletion,
     updateVenmoHandle,
     upsertPosition,
@@ -99,6 +100,9 @@ export default function App() {
     const [question, setQuestion] = useState("");
     const [description, setDescription] = useState("");
     const [targetUserId, setTargetUserId] = useState("");
+    const [outcomeLabels, setOutcomeLabels] = useState<string[]>(["YES", "NO"]);
+    const [minBet, setMinBet] = useState("1");
+    const [maxBet, setMaxBet] = useState("100000");
     const [closesAt, setClosesAt] = useState(tomorrowAtNoon());
     const [statusMessage, setStatusMessage] = useState("Sign in to launch your prediction desk.");
     const [error, setError] = useState("");
@@ -108,7 +112,7 @@ export default function App() {
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [groupSetupMode, setGroupSetupMode] = useState<GroupSetupMode>("join");
-    const [tutorialDraft, setTutorialDraft] = useState<TradeDraft>({ side: "YES", amount: DEFAULT_TRADE_AMOUNT });
+    const [tutorialDraft, setTutorialDraft] = useState<TradeDraft>({ outcomeId: "YES", side: "YES", amount: DEFAULT_TRADE_AMOUNT });
     const [tutorialPracticeStep, setTutorialPracticeStep] = useState<TutorialPracticeStep>("pick-side");
     const [tutorialHoverTarget, setTutorialHoverTarget] = useState<TutorialHoverTarget>(null);
     const [tutorialBetPlaced, setTutorialBetPlaced] = useState(false);
@@ -185,6 +189,11 @@ export default function App() {
         const nextProfile = await getCurrentUser(accessToken);
         setProfile(nextProfile);
         setVenmoHandle(nextProfile.user.venmoHandle ?? "");
+        const activeGroup = nextProfile.groups.find((group) => group.id === selectedGroupIdRef.current) ?? nextProfile.groups[0];
+        if (activeGroup) {
+            setMinBet(String(activeGroup.minBet));
+            setMaxBet(String(activeGroup.maxBet));
+        }
         return nextProfile;
     }
 
@@ -196,8 +205,13 @@ export default function App() {
 
             for (const market of nextMarkets) {
                 if (!nextDrafts[market.id]) {
+                    const firstOutcome = market.outcomes[0];
+                    const leadingUserOutcome = market.userPosition.outcomeAmounts
+                        .filter((outcome) => outcome.amount > 0)
+                        .sort((left, right) => right.amount - left.amount)[0];
                     nextDrafts[market.id] = {
-                        side: market.userPosition.noAmount > market.userPosition.yesAmount ? "NO" : "YES",
+                        outcomeId: leadingUserOutcome?.id ?? firstOutcome?.id ?? "",
+                        side: leadingUserOutcome?.label === "NO" ? "NO" : "YES",
                         amount:
                             market.userPosition.totalAmount > 0
                                 ? String(market.userPosition.totalAmount)
@@ -487,6 +501,7 @@ export default function App() {
         setTradeDrafts((currentDrafts) => ({
             ...currentDrafts,
             [marketId]: {
+                outcomeId: currentDrafts[marketId]?.outcomeId ?? "",
                 side: currentDrafts[marketId]?.side ?? "YES",
                 amount: currentDrafts[marketId]?.amount ?? DEFAULT_TRADE_AMOUNT,
                 ...patch
@@ -497,7 +512,8 @@ export default function App() {
     function handleTutorialSideChange(side: "YES" | "NO") {
         setTutorialDraft((current) => ({
             ...current,
-            side
+            side,
+            outcomeId: side
         }));
 
         if (tutorialPracticeStep === "pick-side") {
@@ -680,10 +696,33 @@ export default function App() {
         }
     }
 
+    async function handleSaveBetLimits(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setError("");
+        setBusyAction("bet-limits");
+
+        try {
+            await updateGroupBetLimits(token, selectedGroupId, Number(minBet || "0"), Number(maxBet || "0"));
+            await refreshProfile(token);
+            setStatusMessage("Bet limits updated.");
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : "Failed to update bet limits.");
+        } finally {
+            setBusyAction("");
+        }
+    }
+
     async function handleCreateMarket(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setError("");
         setBusyAction("create-market");
+        const normalizedOutcomes = [...new Set(outcomeLabels.map((label) => label.trim()).filter(Boolean))];
+
+        if (normalizedOutcomes.length < 2 || normalizedOutcomes.length > 5) {
+            setError("Add between 2 and 5 unique outcomes.");
+            setBusyAction("");
+            return;
+        }
 
         try {
             await createMarket(token, {
@@ -691,12 +730,14 @@ export default function App() {
                 targetUserId: targetUserId === GENERAL_MARKET_VALUE ? null : targetUserId,
                 question,
                 description,
-                closesAt: new Date(closesAt).toISOString()
+                closesAt: new Date(closesAt).toISOString(),
+                outcomes: normalizedOutcomes
             });
             await refreshMarkets(token, selectedGroupId);
             setQuestion("");
             setDescription("");
             setTargetUserId("");
+            setOutcomeLabels(["YES", "NO"]);
             setClosesAt(tomorrowAtNoon());
             setStatusMessage("Market published.");
         } catch (requestError) {
@@ -707,20 +748,26 @@ export default function App() {
     }
 
     async function handleSavePosition(marketId: string) {
-        const draft = tradeDrafts[marketId] ?? { side: "YES" as const, amount: DEFAULT_TRADE_AMOUNT };
+        const market = markets.find((entry) => entry.id === marketId);
+        const draft = tradeDrafts[marketId] ?? { outcomeId: market?.outcomes[0]?.id ?? "", side: "YES" as const, amount: DEFAULT_TRADE_AMOUNT };
+        const requestedAmount = Number(draft.amount || "0");
+        const existingAmount = market
+            ? market.userPosition.totalAmount + market.userPendingPosition.totalAmount
+            : 0;
+        const topUpAmount = Math.max(0, requestedAmount - existingAmount);
         setError("");
         setBusyAction(`position-${marketId}`);
 
         try {
             const updatedMarket = await upsertPosition(token, marketId, {
-                side: draft.side,
-                amount: Number(draft.amount || "0")
+                outcomeId: draft.outcomeId,
+                amount: requestedAmount
             });
             await refreshWorkspace(token, selectedGroupId);
             setStatusMessage(
-                Number(draft.amount || "0") > 0
-                    ? `Position submitted. Send ${formatMoney(Number(draft.amount || "0"))} using the Venmo link for ${updatedMarket.venmoRecipient.venmoHandle ? `@${normalizeVenmoHandle(updatedMarket.venmoRecipient.venmoHandle)}` : updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
-                    : "Position removed."
+                topUpAmount > 0
+                    ? `Position submitted. Send ${formatMoney(topUpAmount)} using the Venmo link for ${updatedMarket.venmoRecipient.venmoHandle ? `@${normalizeVenmoHandle(updatedMarket.venmoRecipient.venmoHandle)}` : updatedMarket.venmoRecipient.displayName}, then wait for creator confirmation.`
+                    : "Enter a larger amount to add to this position."
             );
         } catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : "Failed to save position.");
@@ -759,12 +806,12 @@ export default function App() {
         }
     }
 
-    async function handleResolve(marketId: string, resolution: boolean) {
+    async function handleResolve(marketId: string, outcomeId: string) {
         setError("");
         setBusyAction(`resolve-${marketId}`);
 
         try {
-            await resolveMarket(token, marketId, resolution);
+            await resolveMarket(token, marketId, outcomeId);
             await refreshWorkspace(token, selectedGroupId);
             setStatusMessage("Resolution proposed. 30% of the group needs to confirm it before settlement runs.");
         } catch (requestError) {
@@ -927,6 +974,8 @@ export default function App() {
             setDescription={setDescription}
             targetUserId={targetUserId}
             setTargetUserId={setTargetUserId}
+            outcomeLabels={outcomeLabels}
+            setOutcomeLabels={setOutcomeLabels}
             closesAt={closesAt}
             setClosesAt={setClosesAt}
             groupName={groupName}
@@ -936,6 +985,10 @@ export default function App() {
             referralJoinCode={referralJoinCode}
             venmoHandle={venmoHandle}
             setVenmoHandle={setVenmoHandle}
+            minBet={minBet}
+            setMinBet={setMinBet}
+            maxBet={maxBet}
+            setMaxBet={setMaxBet}
             themePreference={themePreference}
             resolvedTheme={resolvedTheme}
             setThemePreference={setThemePreference}
@@ -961,6 +1014,7 @@ export default function App() {
             onCopyInviteLink={copyInviteLink}
             onRemoveGroupMember={handleRemoveGroupMember}
             onDeleteGroup={handleDeleteGroup}
+            onSaveBetLimits={handleSaveBetLimits}
             onCreateMarket={handleCreateMarket}
             onUpdateTradeDraft={updateTradeDraft}
             onSavePosition={handleSavePosition}

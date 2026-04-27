@@ -21,6 +21,8 @@ type DashboardScreenProps = {
     setDescription: (value: string) => void;
     targetUserId: string;
     setTargetUserId: (value: string) => void;
+    outcomeLabels: string[];
+    setOutcomeLabels: (value: string[] | ((current: string[]) => string[])) => void;
     closesAt: string;
     setClosesAt: (value: string) => void;
     groupName: string;
@@ -30,6 +32,10 @@ type DashboardScreenProps = {
     referralJoinCode: string;
     venmoHandle: string;
     setVenmoHandle: (value: string) => void;
+    minBet: string;
+    setMinBet: (value: string) => void;
+    maxBet: string;
+    setMaxBet: (value: string) => void;
     themePreference: ThemePreference;
     resolvedTheme: ResolvedTheme;
     setThemePreference: (value: ThemePreference) => void;
@@ -49,12 +55,13 @@ type DashboardScreenProps = {
     onCopyInviteLink: (joinCode: string) => Promise<void>;
     onRemoveGroupMember: (groupId: string, memberId: string, memberName: string) => Promise<void>;
     onDeleteGroup: (groupId: string, groupNameToDelete: string) => Promise<void>;
+    onSaveBetLimits: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onCreateMarket: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onUpdateTradeDraft: (marketId: string, patch: Partial<TradeDraft>) => void;
     onSavePosition: (marketId: string) => Promise<void>;
     onConfirmPosition: (marketId: string, positionId: string) => Promise<void>;
     onRejectPosition: (marketId: string, positionId: string) => Promise<void>;
-    onResolve: (marketId: string, resolution: boolean) => Promise<void>;
+    onResolve: (marketId: string, outcomeId: string) => Promise<void>;
     onConfirmMarketResolution: (marketId: string) => Promise<void>;
     onDeleteMarket: (marketId: string) => Promise<void>;
     onMarkPayoutSent: (marketId: string, payoutId: string) => Promise<void>;
@@ -75,6 +82,8 @@ export function DashboardScreen({
     setDescription,
     targetUserId,
     setTargetUserId,
+    outcomeLabels,
+    setOutcomeLabels,
     closesAt,
     setClosesAt,
     groupName,
@@ -84,6 +93,10 @@ export function DashboardScreen({
     referralJoinCode,
     venmoHandle,
     setVenmoHandle,
+    minBet,
+    setMinBet,
+    maxBet,
+    setMaxBet,
     themePreference,
     resolvedTheme,
     setThemePreference,
@@ -103,6 +116,7 @@ export function DashboardScreen({
     onCopyInviteLink,
     onRemoveGroupMember,
     onDeleteGroup,
+    onSaveBetLimits,
     onCreateMarket,
     onUpdateTradeDraft,
     onSavePosition,
@@ -182,6 +196,11 @@ export function DashboardScreen({
                 onCopyInviteLink={onCopyInviteLink}
                 onRemoveMember={onRemoveGroupMember}
                 onDeleteGroup={onDeleteGroup}
+                minBet={minBet}
+                setMinBet={setMinBet}
+                maxBet={maxBet}
+                setMaxBet={setMaxBet}
+                onSaveBetLimits={onSaveBetLimits}
             />
 
             <section className="dashboard-grid">
@@ -266,6 +285,38 @@ export function DashboardScreen({
                                 onChange={(event) => setDescription(event.target.value)}
                                 placeholder="Settlement notes, timeline, edge cases"
                             />
+                            <div className="form-stack outcome-editor">
+                                <span className="subtle-copy">Outcomes</span>
+                                {outcomeLabels.map((label, index) => (
+                                    <input
+                                        key={index}
+                                        value={label}
+                                        onChange={(event) => setOutcomeLabels((current) => current.map((entry, entryIndex) => entryIndex === index ? event.target.value : entry))}
+                                        placeholder={`Outcome ${index + 1}`}
+                                        required={index < 2}
+                                    />
+                                ))}
+                                <div className="market-footer-actions">
+                                    {outcomeLabels.length < 5 ? (
+                                        <button
+                                            className="ghost-button"
+                                            type="button"
+                                            onClick={() => setOutcomeLabels((current) => [...current, ""])}
+                                        >
+                                            Add outcome
+                                        </button>
+                                    ) : null}
+                                    {outcomeLabels.length > 2 ? (
+                                        <button
+                                            className="ghost-button"
+                                            type="button"
+                                            onClick={() => setOutcomeLabels((current) => current.slice(0, -1))}
+                                        >
+                                            Remove outcome
+                                        </button>
+                                    ) : null}
+                                </div>
+                            </div>
                             <input
                                 type="datetime-local"
                                 value={closesAt}
@@ -302,7 +353,8 @@ export function DashboardScreen({
                             <div className="market-grid">
                                 {markets.map((market) => {
                                     const draft = tradeDrafts[market.id] ?? {
-                                        side: market.userPosition.noAmount > market.userPosition.yesAmount ? "NO" as const : "YES" as const,
+                                        outcomeId: market.userPosition.outcomeAmounts.find((outcome) => outcome.amount > 0)?.id ?? market.outcomes[0]?.id ?? "",
+                                        side: "YES" as const,
                                         amount:
                                             market.userPosition.totalAmount > 0
                                                 ? String(market.userPosition.totalAmount)
