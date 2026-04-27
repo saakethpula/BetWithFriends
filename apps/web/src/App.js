@@ -626,7 +626,7 @@ export default function App() {
         try {
             await resolveMarket(token, marketId, resolution);
             await refreshWorkspace(token, selectedGroupId);
-            setStatusMessage("Resolution proposed. Three people need to confirm it before settlement runs.");
+            setStatusMessage("Resolution proposed. 30% of the group needs to confirm it before settlement runs.");
         }
         catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : "Failed to resolve market.");
@@ -642,7 +642,7 @@ export default function App() {
             const updatedMarket = await confirmMarketResolution(token, marketId);
             await refreshWorkspace(token, selectedGroupId);
             setStatusMessage(updatedMarket.status === "RESOLVED"
-                ? "Resolution confirmed by three people. Settlement is now final."
+                ? "Resolution confirmed by enough group members. Settlement is now final."
                 : "Resolution confirmation recorded.");
         }
         catch (requestError) {

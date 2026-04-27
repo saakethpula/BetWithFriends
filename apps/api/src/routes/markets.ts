@@ -23,7 +23,7 @@ const PAYOUT_CONFIRMATION_STATUS = {
 } as const;
 
 type PayoutConfirmationStatus = (typeof PAYOUT_CONFIRMATION_STATUS)[keyof typeof PAYOUT_CONFIRMATION_STATUS];
-const REQUIRED_RESOLUTION_CONFIRMATIONS = 3;
+const RESOLUTION_CONFIRMATION_PERCENTAGE = 0.3;
 
 const createMarketSchema = z.object({
   groupId: z.string().min(1),
@@ -65,6 +65,11 @@ type SerializableMarket = {
   updatedAt: Date;
   createdBy: { id: string; displayName: string; venmoHandle?: string | null };
   resolutionProposedBy: { id: string; displayName: string } | null;
+  group: {
+    memberships: Array<{
+      userId: string;
+    }>;
+  };
   targetUser: { id: string; displayName: string } | null;
   positions: Array<{
     id: string;
@@ -141,6 +146,15 @@ const detailedMarketInclude = {
         }
       }
     }
+  },
+  group: {
+    select: {
+      memberships: {
+        select: {
+          userId: true
+        }
+      }
+    }
   }
 } as const;
 
@@ -173,6 +187,10 @@ async function refreshPayoutFinalization(tx: typeof prisma | Omit<typeof prisma,
       payoutsFinalizedAt: allConfirmed ? new Date() : null
     } as never
   } as never);
+}
+
+function calculateRequiredResolutionConfirmations(groupMemberCount: number) {
+  return Math.max(1, Math.ceil(groupMemberCount * RESOLUTION_CONFIRMATION_PERCENTAGE));
 }
 
 async function finalizeMarketResolution(
@@ -226,6 +244,7 @@ async function finalizeMarketResolution(
 }
 
 function serializeMarket(market: SerializableMarket, currentUserId: string) {
+  const { group, ...marketWithoutGroup } = market;
   const confirmedPositions = filterConfirmedPositions(market.positions);
   const pendingPositions = filterPendingPositions(market.positions);
   const payouts = calculateResolutionPayouts(confirmedPositions, market.resolution);
@@ -275,9 +294,10 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
     .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
   const userResolutionConfirmation =
     resolutionConfirmations.find((confirmation) => confirmation.userId === currentUserId) ?? null;
+  const requiredResolutionConfirmations = calculateRequiredResolutionConfirmations(group.memberships.length);
 
   return {
-    ...market,
+    ...marketWithoutGroup,
     isGeneral: market.targetUserId === null,
     summary: calculateMarketSummary(confirmedPositions),
     userPosition: calculateUserPosition(confirmedPositions, currentUserId),
@@ -294,7 +314,7 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
     userPayoutConfirmation,
     resolutionConfirmations,
     resolutionConfirmationCount: resolutionConfirmations.length,
-    requiredResolutionConfirmations: REQUIRED_RESOLUTION_CONFIRMATIONS,
+    requiredResolutionConfirmations,
     userResolutionConfirmation,
     pendingConfirmations
   };
@@ -666,7 +686,9 @@ marketsRouter.post("/:marketId/resolution/confirm", asyncHandler(async (req, res
       where: { marketId }
     });
 
-    if (confirmationCount >= REQUIRED_RESOLUTION_CONFIRMATIONS) {
+    const requiredResolutionConfirmations = calculateRequiredResolutionConfirmations(market.group.memberships.length);
+
+    if (confirmationCount >= requiredResolutionConfirmations) {
       await finalizeMarketResolution(tx, market, proposedResolution);
     }
 
