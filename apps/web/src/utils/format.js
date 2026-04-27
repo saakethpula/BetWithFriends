@@ -11,6 +11,12 @@ export function formatMoney(amount) {
         maximumFractionDigits: 0
     }).format(amount);
 }
+export function formatPercent(value) {
+    return new Intl.NumberFormat("en-US", {
+        style: "percent",
+        maximumFractionDigits: 0
+    }).format(value);
+}
 export function formatSignedMoney(amount) {
     if (amount === 0) {
         return formatMoney(0);

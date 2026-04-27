@@ -9,12 +9,18 @@ export type OutcomeLike = {
 type PositionLike = Pick<Position, "userId" | "amount" | "status"> & {
   side?: PositionSide | null;
   outcomeId?: string | null;
+  createdAt?: Date | string;
+  confirmedAt?: Date | string | null;
 };
 
 const LEGACY_OUTCOMES: OutcomeLike[] = [
   { id: "YES", label: "YES", sortOrder: 0 },
   { id: "NO", label: "NO", sortOrder: 1 }
 ];
+
+function roundPrice(price: number) {
+  return Number(price.toFixed(2));
+}
 
 function getPositionOutcomeId(position: PositionLike) {
   return position.outcomeId ?? position.side ?? "";
@@ -26,6 +32,35 @@ function getOrderedOutcomes(outcomes?: OutcomeLike[]) {
   );
 }
 
+function getPositionTimestamp(position: PositionLike) {
+  const timestamp = position.confirmedAt ?? position.createdAt;
+  return timestamp ? new Date(timestamp).getTime() : 0;
+}
+
+function getInitialOutcomeVolumes(outcomes: OutcomeLike[]) {
+  return new Map(outcomes.map((outcome) => [outcome.id, 0]));
+}
+
+function calculateOutcomePrices(outcomes: OutcomeLike[], outcomeVolumes: Map<string, number>) {
+  const startingVolumePerOutcome = 1;
+  const totalVolume = [...outcomeVolumes.values()].reduce((total, volume) => total + volume, 0);
+  const pricedVolume = totalVolume + outcomes.length * startingVolumePerOutcome;
+
+  return outcomes.map((outcome) => {
+    const volume = outcomeVolumes.get(outcome.id) ?? 0;
+    const price =
+      pricedVolume === 0
+        ? 1 / outcomes.length
+        : (volume + startingVolumePerOutcome) / pricedVolume;
+
+    return {
+      id: outcome.id,
+      label: outcome.label,
+      price: roundPrice(price)
+    };
+  });
+}
+
 export function filterConfirmedPositions<T extends PositionLike>(positions: T[]) {
   return positions.filter((position) => position.status === "CONFIRMED");
 }
@@ -34,9 +69,18 @@ export function filterPendingPositions<T extends PositionLike>(positions: T[]) {
   return positions.filter((position) => position.status === "PENDING");
 }
 
-export function calculateMarketSummary(positions: PositionLike[], outcomes?: OutcomeLike[]) {
+export function calculateMarketSummary(
+  positions: PositionLike[],
+  outcomes?: OutcomeLike[]
+) {
   const orderedOutcomes = getOrderedOutcomes(outcomes);
   const totalVolume = positions.reduce((total, position) => total + position.amount, 0);
+  const outcomeVolumes = getInitialOutcomeVolumes(orderedOutcomes);
+  for (const position of positions) {
+    const outcomeId = getPositionOutcomeId(position);
+    outcomeVolumes.set(outcomeId, (outcomeVolumes.get(outcomeId) ?? 0) + position.amount);
+  }
+  const outcomePrices = calculateOutcomePrices(orderedOutcomes, outcomeVolumes);
   const outcomeSummaries = orderedOutcomes.map((outcome) => {
     const volume = positions
       .filter((position) => getPositionOutcomeId(position) === outcome.id)
@@ -46,7 +90,7 @@ export function calculateMarketSummary(positions: PositionLike[], outcomes?: Out
       id: outcome.id,
       label: outcome.label,
       volume,
-      price: totalVolume === 0 ? Number((1 / orderedOutcomes.length).toFixed(2)) : Number((volume / totalVolume).toFixed(2))
+      price: outcomePrices.find((price) => price.id === outcome.id)?.price ?? roundPrice(1 / orderedOutcomes.length)
     };
   });
   const leadingOutcome =
@@ -64,8 +108,32 @@ export function calculateMarketSummary(positions: PositionLike[], outcomes?: Out
     yesPrice: yesOutcome?.price ?? 0,
     noPrice: noOutcome?.price ?? 0,
     leadingSide: leadingOutcome.label,
-    leadingOutcome
+    leadingOutcome,
+    priceHistory: calculateMarketPriceHistory(positions, outcomes)
   };
+}
+
+export function calculateMarketPriceHistory(positions: PositionLike[], outcomes?: OutcomeLike[]) {
+  const orderedOutcomes = getOrderedOutcomes(outcomes);
+  const outcomeVolumes = getInitialOutcomeVolumes(orderedOutcomes);
+  const orderedPositions = [...positions].sort((left, right) => getPositionTimestamp(left) - getPositionTimestamp(right));
+  const history = [
+    {
+      timestamp: orderedPositions[0]?.createdAt ?? orderedPositions[0]?.confirmedAt ?? null,
+      outcomes: calculateOutcomePrices(orderedOutcomes, outcomeVolumes)
+    }
+  ];
+
+  for (const position of orderedPositions) {
+    const outcomeId = getPositionOutcomeId(position);
+    outcomeVolumes.set(outcomeId, (outcomeVolumes.get(outcomeId) ?? 0) + position.amount);
+    history.push({
+      timestamp: position.confirmedAt ?? position.createdAt ?? null,
+      outcomes: calculateOutcomePrices(orderedOutcomes, outcomeVolumes)
+    });
+  }
+
+  return history;
 }
 
 export function calculateUserPosition(

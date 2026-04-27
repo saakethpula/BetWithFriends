@@ -1,6 +1,6 @@
 import type { CurrentUserResponse, Market } from "../../lib/api";
 import type { TradeDraft } from "../../types/app";
-import { formatMoney } from "../../utils/format";
+import { formatMoney, formatPercent } from "../../utils/format";
 import { getVenmoPaymentUrl, normalizeVenmoHandle } from "../../utils/venmo";
 
 type MarketCardProps = {
@@ -20,6 +20,65 @@ type MarketCardProps = {
     onMarkPayoutSent: (marketId: string, payoutId: string) => Promise<void>;
     onRespondToPayout: (marketId: string, payoutId: string, received: boolean) => Promise<void>;
 };
+
+const OUTCOME_LINE_COLORS = ["#4f8f85", "#c98d82", "#c7a56a", "#6b7fa7", "#9b7bb4"];
+
+function buildChartPath(points: Array<{ x: number; y: number }>) {
+    return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+}
+
+function MarketOddsChart({ market }: { market: Market }) {
+    const chartWidth = 100;
+    const chartHeight = 48;
+    const priceHistory = market.summary.priceHistory.length > 0
+        ? market.summary.priceHistory
+        : [{ timestamp: null, outcomes: market.summary.outcomes.map(({ id, label, price }) => ({ id, label, price })) }];
+    const pathPoints = market.summary.outcomes.map((outcome) => {
+        const historyPoints = priceHistory.map((historyPoint, index) => {
+            const divisor = Math.max(1, priceHistory.length - 1);
+            const price = historyPoint.outcomes.find((entry) => entry.id === outcome.id)?.price ?? outcome.price;
+
+            return {
+                x: (index / divisor) * chartWidth,
+                y: chartHeight - price * chartHeight
+            };
+        });
+        const normalizedPoints = historyPoints.length === 1
+            ? [{ x: 0, y: historyPoints[0].y }, { x: chartWidth, y: historyPoints[0].y }]
+            : historyPoints;
+
+        return {
+            ...outcome,
+            color: OUTCOME_LINE_COLORS[market.summary.outcomes.findIndex((entry) => entry.id === outcome.id) % OUTCOME_LINE_COLORS.length],
+            path: buildChartPath(normalizedPoints)
+        };
+    });
+
+    return (
+        <section className="market-chart" aria-label="Live odds chart">
+            <div className="market-chart-heading">
+                <span className="kicker">Live odds</span>
+                <strong>{market.summary.leadingOutcome.label} {formatPercent(market.summary.leadingOutcome.price)}</strong>
+            </div>
+            <svg className="odds-chart" viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label="Odds history">
+                <line x1="0" x2={chartWidth} y1={chartHeight * 0.25} y2={chartHeight * 0.25} />
+                <line x1="0" x2={chartWidth} y1={chartHeight * 0.5} y2={chartHeight * 0.5} />
+                <line x1="0" x2={chartWidth} y1={chartHeight * 0.75} y2={chartHeight * 0.75} />
+                {pathPoints.map((outcome) => (
+                    <path key={outcome.id} d={outcome.path} style={{ stroke: outcome.color }} />
+                ))}
+            </svg>
+            <div className="market-chart-legend">
+                {pathPoints.map((outcome) => (
+                    <span key={outcome.id}>
+                        <i style={{ background: outcome.color }} />
+                        {outcome.label} {formatPercent(outcome.price)}
+                    </span>
+                ))}
+            </div>
+        </section>
+    );
+}
 
 export function MarketCard({
     market,
@@ -102,13 +161,15 @@ export function MarketCard({
                 </div>
                 <div className="market-rail-card">
                     <span>Leading outcome</span>
-                    <strong>{market.summary.leadingOutcome.label}</strong>
+                    <strong>{market.summary.leadingOutcome.label} {formatPercent(market.summary.leadingOutcome.price)}</strong>
                 </div>
                 <div className="market-rail-card">
                     <span>Payout to you</span>
                     <strong>{formatMoney(market.userPayout)}</strong>
                 </div>
             </div>
+
+            <MarketOddsChart market={market} />
 
             <div className="trade-box">
                 <div className="trade-toggle">
@@ -325,7 +386,9 @@ export function MarketCard({
 
             <div className="market-footer">
                 <span className="subtle-copy">
-                    Current split: {market.summary.outcomes.map((outcome) => `${outcome.label} ${formatMoney(outcome.volume)}`).join(" / ")}
+                    Current odds: {market.summary.outcomes.map((outcome) => `${outcome.label} ${formatPercent(outcome.price)}`).join(" / ")}
+                    {" | "}
+                    Stake split: {market.summary.outcomes.map((outcome) => `${outcome.label} ${formatMoney(outcome.volume)}`).join(" / ")}
                 </span>
                 <div className="market-footer-actions">
                     {canRemove ? (

@@ -77,6 +77,14 @@ export type Market = {
       volume: number;
       price: number;
     }>;
+    priceHistory: Array<{
+      timestamp?: string | null;
+      outcomes: Array<{
+        id: string;
+        label: string;
+        price: number;
+      }>;
+    }>;
     yesVolume: number;
     noVolume: number;
     totalVolume: number;

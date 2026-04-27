@@ -13,6 +13,13 @@ export function formatMoney(amount: number) {
     }).format(amount);
 }
 
+export function formatPercent(value: number) {
+    return new Intl.NumberFormat("en-US", {
+        style: "percent",
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
 export function formatSignedMoney(amount: number) {
     if (amount === 0) {
         return formatMoney(0);
