@@ -14,11 +14,14 @@ type SettingsModalProps = {
     themePreference: ThemePreference;
     resolvedTheme: ResolvedTheme;
     setThemePreference: (value: ThemePreference) => void;
+    notificationPermission: NotificationPermission | "unsupported";
+    notificationSupportMessage: string;
     onClose: () => void;
     onOpenFamilyManager: () => void;
     onCreateGroup: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onSaveVenmoHandle: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onRestartTutorial: () => Promise<void>;
+    onEnableNotifications: () => Promise<void>;
 };
 
 export function SettingsModal({
@@ -33,11 +36,14 @@ export function SettingsModal({
     themePreference,
     resolvedTheme,
     setThemePreference,
+    notificationPermission,
+    notificationSupportMessage,
     onClose,
     onOpenFamilyManager,
     onCreateGroup,
     onSaveVenmoHandle,
-    onRestartTutorial
+    onRestartTutorial,
+    onEnableNotifications
 }: SettingsModalProps) {
     if (!open) {
         return null;
@@ -123,6 +129,28 @@ export function SettingsModal({
                             <option value="light">Light mode</option>
                             <option value="dark">Dark mode</option>
                         </select>
+                    </div>
+
+                    <div className="form-stack compact-form">
+                        <span className="subtle-copy">Notifications</span>
+                        <strong>
+                            {notificationPermission === "granted"
+                                ? "Enabled"
+                                : notificationPermission === "denied"
+                                    ? "Blocked"
+                                    : notificationPermission === "unsupported"
+                                        ? "Not supported"
+                                        : "Not enabled"}
+                        </strong>
+                        <p className="subtle-copy">{notificationSupportMessage}</p>
+                        <button
+                            className="primary-button"
+                            type="button"
+                            disabled={notificationPermission === "granted" || notificationPermission === "unsupported"}
+                            onClick={() => void onEnableNotifications()}
+                        >
+                            {notificationPermission === "denied" ? "Retry notification access" : "Enable notifications"}
+                        </button>
                     </div>
 
                     <div className="form-stack compact-form">

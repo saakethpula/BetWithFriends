@@ -11,6 +11,45 @@ import { buildGroupInviteUrl, clearReferralJoinCodeFromUrl, clearSavedReferralJo
 import { getTutorialPrompt, resetTutorialState } from "./utils/tutorial";
 import { getVenmoUrl, normalizeVenmoHandle } from "./utils/venmo";
 const THEME_PREFERENCE_STORAGE_KEY = "family-market-theme-preference";
+const REALTIME_NOTIFICATION_COPY = {
+    "market.created": {
+        title: "New market created",
+        body: "A new market is live in your family."
+    },
+    "market.position.updated": {
+        title: "New bet submitted",
+        body: "A market position was updated."
+    },
+    "market.position.confirmed": {
+        title: "Payment confirmed",
+        body: "A pending bet payment was confirmed."
+    },
+    "market.payout.sent": {
+        title: "Payout sent",
+        body: "A payout was marked as sent."
+    },
+    "market.payout.responded": {
+        title: "Payout updated",
+        body: "A payout confirmation was updated."
+    },
+    "market.collection.settled": {
+        title: "Collection settled",
+        body: "A collection entry was marked as settled."
+    }
+};
+function isIosDevice() {
+    if (typeof navigator === "undefined") {
+        return false;
+    }
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+function isStandaloneDisplayMode() {
+    if (typeof window === "undefined") {
+        return false;
+    }
+    const navigatorWithStandalone = window.navigator;
+    return window.matchMedia("(display-mode: standalone)").matches || navigatorWithStandalone.standalone === true;
+}
 function getSystemTheme() {
     if (typeof window === "undefined") {
         return "light";
@@ -65,6 +104,12 @@ export default function App() {
         const initialPreference = getInitialThemePreference();
         return initialPreference === "system" ? getSystemTheme() : initialPreference;
     });
+    const [notificationPermissionState, setNotificationPermissionState] = useState(() => {
+        if (typeof window === "undefined" || !("Notification" in window)) {
+            return "unsupported";
+        }
+        return window.Notification.permission;
+    });
     const selectedGroupIdRef = useRef(selectedGroupId);
     const liveRefreshInFlightRef = useRef(false);
     const selectedGroup = useMemo(() => profile?.groups.find((group) => group.id === selectedGroupId) ?? null, [profile, selectedGroupId]);
@@ -77,6 +122,12 @@ export default function App() {
     const tutorialPrompt = getTutorialPrompt(tutorialHoverTarget, tutorialPracticeStep);
     const tutorialVenmoUrl = getVenmoUrl("saakethp");
     const selectedGroupInviteUrl = selectedGroup ? buildGroupInviteUrl(selectedGroup.joinCode) : "";
+    const iosRequiresStandaloneForNotifications = isIosDevice() && !isStandaloneDisplayMode();
+    const notificationSupportMessage = notificationPermissionState === "unsupported"
+        ? "This browser does not support web notifications."
+        : iosRequiresStandaloneForNotifications
+            ? "On iOS, install this app to Home Screen and open it from there to enable notifications."
+            : "Notifications are supported on modern Android and iOS browsers (with iOS requiring Home Screen install).";
     useEffect(() => {
         selectedGroupIdRef.current = selectedGroupId;
     }, [selectedGroupId]);
@@ -98,6 +149,28 @@ export default function App() {
     useEffect(() => {
         document.documentElement.dataset.theme = resolvedTheme;
     }, [resolvedTheme]);
+    useEffect(() => {
+        if (!("serviceWorker" in navigator)) {
+            return;
+        }
+        void navigator.serviceWorker.register("/sw.js").catch(() => {
+            // Ignore service worker registration errors and continue with in-page notifications.
+        });
+    }, []);
+    useEffect(() => {
+        if (!("Notification" in window)) {
+            setNotificationPermissionState("unsupported");
+            return;
+        }
+        const syncPermission = () => {
+            setNotificationPermissionState(window.Notification.permission);
+        };
+        syncPermission();
+        window.addEventListener("focus", syncPermission);
+        return () => {
+            window.removeEventListener("focus", syncPermission);
+        };
+    }, []);
     useEffect(() => {
         if (isLoading) {
             return;
@@ -194,6 +267,47 @@ export default function App() {
             setError(requestError instanceof Error ? requestError.message : "Failed to copy invite link.");
         }
     }
+    async function handleEnableNotifications() {
+        if (!("Notification" in window)) {
+            setNotificationPermissionState("unsupported");
+            setError("This browser does not support notifications.");
+            return;
+        }
+        if (isIosDevice() && !isStandaloneDisplayMode()) {
+            setError("On iOS, add this app to your Home Screen and open it from there before enabling notifications.");
+            return;
+        }
+        const permission = await window.Notification.requestPermission();
+        setNotificationPermissionState(permission);
+        if (permission === "granted") {
+            setStatusMessage("Notifications enabled.");
+            setError("");
+            return;
+        }
+        if (permission === "denied") {
+            setError("Notifications are blocked. Enable them in your browser settings.");
+        }
+    }
+    function maybeShowRealtimeNotification(reason) {
+        if (!reason || document.visibilityState === "visible") {
+            return;
+        }
+        if (!("Notification" in window) || window.Notification.permission !== "granted") {
+            return;
+        }
+        const content = REALTIME_NOTIFICATION_COPY[reason];
+        if (!content) {
+            return;
+        }
+        const notification = new window.Notification(content.title, {
+            body: content.body,
+            tag: `family-market-${reason}`
+        });
+        notification.onclick = () => {
+            window.focus();
+            notification.close();
+        };
+    }
     function openFamilyManager() {
         setSettingsOpen(false);
         setFamilyManagerOpen(true);
@@ -280,6 +394,7 @@ export default function App() {
                     if (message.type !== "workspace.invalidate") {
                         return;
                     }
+                    maybeShowRealtimeNotification(message.reason);
                     void refreshLiveWorkspace(token, Array.isArray(message.groupIds) ? message.groupIds : undefined);
                 }
                 catch {
@@ -786,9 +901,9 @@ export default function App() {
     if (showOnboarding) {
         return (_jsx(OnboardingScreen, { profile: profile, statusMessage: statusMessage, error: error, busyAction: busyAction, needsVenmoHandle: needsVenmoHandle, needsFirstGroup: needsFirstGroup, onboardingReady: onboardingReady, canStartPractice: canStartPractice, onboardingStep: onboardingStep, setOnboardingStep: setOnboardingStep, skipGroupSetupStep: skipGroupSetupStep, groupSetupMode: groupSetupMode, setGroupSetupMode: setGroupSetupMode, referralJoinCode: referralJoinCode, joinCode: joinCode, setJoinCode: setJoinCode, groupName: groupName, setGroupName: setGroupName, venmoHandle: venmoHandle, setVenmoHandle: setVenmoHandle, tutorialDraft: tutorialDraft, tutorialAmountNumber: tutorialAmountNumber, tutorialPracticeStep: tutorialPracticeStep, tutorialHoverTarget: tutorialHoverTarget, setTutorialHoverTarget: setTutorialHoverTarget, tutorialBetPlaced: tutorialBetPlaced, tutorialPrompt: tutorialPrompt, tutorialVenmoUrl: tutorialVenmoUrl, onTutorialSideChange: handleTutorialSideChange, onTutorialAmountChange: handleTutorialAmountChange, onTutorialPlaceBet: handleTutorialPlaceBet, onTutorialPaymentSent: handleTutorialPaymentSent, onSaveVenmoHandle: handleSaveVenmoHandle, onJoinGroup: handleJoinGroup, onCreateGroup: handleCreateGroup, onCompleteTutorial: handleTutorialCompletion }));
     }
-    return (_jsx(DashboardScreen, { profile: profile, selectedGroup: selectedGroup, selectedGroupId: selectedGroupId, setSelectedGroupId: setSelectedGroupId, markets: markets, visibleMembers: visibleMembers, tradeDrafts: tradeDrafts, question: question, setQuestion: setQuestion, description: description, setDescription: setDescription, targetUserId: targetUserId, setTargetUserId: setTargetUserId, outcomeLabels: outcomeLabels, setOutcomeLabels: setOutcomeLabels, closesAt: closesAt, setClosesAt: setClosesAt, groupName: groupName, setGroupName: setGroupName, joinCode: joinCode, setJoinCode: setJoinCode, referralJoinCode: referralJoinCode, venmoHandle: venmoHandle, setVenmoHandle: setVenmoHandle, minBet: minBet, setMinBet: setMinBet, maxBet: maxBet, setMaxBet: setMaxBet, requireVenmoForBets: requireVenmoForBets, setRequireVenmoForBets: setRequireVenmoForBets, themePreference: themePreference, resolvedTheme: resolvedTheme, setThemePreference: setThemePreference, selectedGroupInviteUrl: selectedGroupInviteUrl, busyAction: busyAction, error: error, settingsOpen: settingsOpen, setSettingsOpen: setSettingsOpen, familyManagerOpen: familyManagerOpen, setFamilyManagerOpen: setFamilyManagerOpen, onOpenFamilyManager: openFamilyManager, onLogout: () => logout({
+    return (_jsx(DashboardScreen, { profile: profile, selectedGroup: selectedGroup, selectedGroupId: selectedGroupId, setSelectedGroupId: setSelectedGroupId, markets: markets, visibleMembers: visibleMembers, tradeDrafts: tradeDrafts, question: question, setQuestion: setQuestion, description: description, setDescription: setDescription, targetUserId: targetUserId, setTargetUserId: setTargetUserId, outcomeLabels: outcomeLabels, setOutcomeLabels: setOutcomeLabels, closesAt: closesAt, setClosesAt: setClosesAt, groupName: groupName, setGroupName: setGroupName, joinCode: joinCode, setJoinCode: setJoinCode, referralJoinCode: referralJoinCode, venmoHandle: venmoHandle, setVenmoHandle: setVenmoHandle, minBet: minBet, setMinBet: setMinBet, maxBet: maxBet, setMaxBet: setMaxBet, requireVenmoForBets: requireVenmoForBets, setRequireVenmoForBets: setRequireVenmoForBets, themePreference: themePreference, resolvedTheme: resolvedTheme, setThemePreference: setThemePreference, notificationPermission: notificationPermissionState, notificationSupportMessage: notificationSupportMessage, selectedGroupInviteUrl: selectedGroupInviteUrl, busyAction: busyAction, error: error, settingsOpen: settingsOpen, setSettingsOpen: setSettingsOpen, familyManagerOpen: familyManagerOpen, setFamilyManagerOpen: setFamilyManagerOpen, onOpenFamilyManager: openFamilyManager, onLogout: () => logout({
             logoutParams: {
                 returnTo: window.location.origin
             }
-        }), onSaveVenmoHandle: handleSaveVenmoHandle, onRestartTutorial: handleRestartTutorial, onCreateGroup: handleCreateGroup, onJoinGroup: handleJoinGroup, onCopyInviteLink: copyInviteLink, onRemoveGroupMember: handleRemoveGroupMember, onDeleteGroup: handleDeleteGroup, onSaveBetLimits: handleSaveBetLimits, onCreateMarket: handleCreateMarket, onUpdateTradeDraft: updateTradeDraft, onSavePosition: handleSavePosition, onConfirmPosition: handleConfirmPosition, onRejectPosition: handleRejectPosition, onResolve: handleResolve, onConfirmMarketResolution: handleConfirmMarketResolution, onDeleteMarket: handleDeleteMarket, onMarkPayoutSent: handleMarkPayoutSent, onRespondToPayout: handleRespondToPayout, onMarkCollectionSettled: handleMarkCollectionSettled }));
+        }), onSaveVenmoHandle: handleSaveVenmoHandle, onEnableNotifications: handleEnableNotifications, onRestartTutorial: handleRestartTutorial, onCreateGroup: handleCreateGroup, onJoinGroup: handleJoinGroup, onCopyInviteLink: copyInviteLink, onRemoveGroupMember: handleRemoveGroupMember, onDeleteGroup: handleDeleteGroup, onSaveBetLimits: handleSaveBetLimits, onCreateMarket: handleCreateMarket, onUpdateTradeDraft: updateTradeDraft, onSavePosition: handleSavePosition, onConfirmPosition: handleConfirmPosition, onRejectPosition: handleRejectPosition, onResolve: handleResolve, onConfirmMarketResolution: handleConfirmMarketResolution, onDeleteMarket: handleDeleteMarket, onMarkPayoutSent: handleMarkPayoutSent, onRespondToPayout: handleRespondToPayout, onMarkCollectionSettled: handleMarkCollectionSettled }));
 }

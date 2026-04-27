@@ -56,6 +56,50 @@ import { getVenmoUrl, normalizeVenmoHandle } from "./utils/venmo";
 
 const THEME_PREFERENCE_STORAGE_KEY = "family-market-theme-preference";
 
+const REALTIME_NOTIFICATION_COPY: Record<string, { title: string; body: string }> = {
+    "market.created": {
+        title: "New market created",
+        body: "A new market is live in your family."
+    },
+    "market.position.updated": {
+        title: "New bet submitted",
+        body: "A market position was updated."
+    },
+    "market.position.confirmed": {
+        title: "Payment confirmed",
+        body: "A pending bet payment was confirmed."
+    },
+    "market.payout.sent": {
+        title: "Payout sent",
+        body: "A payout was marked as sent."
+    },
+    "market.payout.responded": {
+        title: "Payout updated",
+        body: "A payout confirmation was updated."
+    },
+    "market.collection.settled": {
+        title: "Collection settled",
+        body: "A collection entry was marked as settled."
+    }
+};
+
+function isIosDevice() {
+    if (typeof navigator === "undefined") {
+        return false;
+    }
+
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function isStandaloneDisplayMode() {
+    if (typeof window === "undefined") {
+        return false;
+    }
+
+    const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean };
+    return window.matchMedia("(display-mode: standalone)").matches || navigatorWithStandalone.standalone === true;
+}
+
 function getSystemTheme(): ResolvedTheme {
     if (typeof window === "undefined") {
         return "light";
@@ -123,6 +167,13 @@ export default function App() {
         const initialPreference = getInitialThemePreference();
         return initialPreference === "system" ? getSystemTheme() : initialPreference;
     });
+    const [notificationPermissionState, setNotificationPermissionState] = useState<NotificationPermission | "unsupported">(() => {
+        if (typeof window === "undefined" || !("Notification" in window)) {
+            return "unsupported";
+        }
+
+        return window.Notification.permission;
+    });
     const selectedGroupIdRef = useRef(selectedGroupId);
     const liveRefreshInFlightRef = useRef(false);
 
@@ -144,6 +195,12 @@ export default function App() {
     const tutorialPrompt = getTutorialPrompt(tutorialHoverTarget, tutorialPracticeStep);
     const tutorialVenmoUrl = getVenmoUrl("saakethp");
     const selectedGroupInviteUrl = selectedGroup ? buildGroupInviteUrl(selectedGroup.joinCode) : "";
+    const iosRequiresStandaloneForNotifications = isIosDevice() && !isStandaloneDisplayMode();
+    const notificationSupportMessage = notificationPermissionState === "unsupported"
+        ? "This browser does not support web notifications."
+        : iosRequiresStandaloneForNotifications
+            ? "On iOS, install this app to Home Screen and open it from there to enable notifications."
+            : "Notifications are supported on modern Android and iOS browsers (with iOS requiring Home Screen install).";
 
     useEffect(() => {
         selectedGroupIdRef.current = selectedGroupId;
@@ -173,6 +230,34 @@ export default function App() {
     useEffect(() => {
         document.documentElement.dataset.theme = resolvedTheme;
     }, [resolvedTheme]);
+
+    useEffect(() => {
+        if (!("serviceWorker" in navigator)) {
+            return;
+        }
+
+        void navigator.serviceWorker.register("/sw.js").catch(() => {
+            // Ignore service worker registration errors and continue with in-page notifications.
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!("Notification" in window)) {
+            setNotificationPermissionState("unsupported");
+            return;
+        }
+
+        const syncPermission = () => {
+            setNotificationPermissionState(window.Notification.permission);
+        };
+
+        syncPermission();
+        window.addEventListener("focus", syncPermission);
+
+        return () => {
+            window.removeEventListener("focus", syncPermission);
+        };
+    }, []);
 
     useEffect(() => {
         if (isLoading) {
@@ -284,6 +369,58 @@ export default function App() {
         }
     }
 
+    async function handleEnableNotifications() {
+        if (!("Notification" in window)) {
+            setNotificationPermissionState("unsupported");
+            setError("This browser does not support notifications.");
+            return;
+        }
+
+        if (isIosDevice() && !isStandaloneDisplayMode()) {
+            setError("On iOS, add this app to your Home Screen and open it from there before enabling notifications.");
+            return;
+        }
+
+        const permission = await window.Notification.requestPermission();
+        setNotificationPermissionState(permission);
+
+        if (permission === "granted") {
+            setStatusMessage("Notifications enabled.");
+            setError("");
+            return;
+        }
+
+        if (permission === "denied") {
+            setError("Notifications are blocked. Enable them in your browser settings.");
+        }
+    }
+
+    function maybeShowRealtimeNotification(reason: string | undefined) {
+        if (!reason || document.visibilityState === "visible") {
+            return;
+        }
+
+        if (!("Notification" in window) || window.Notification.permission !== "granted") {
+            return;
+        }
+
+        const content = REALTIME_NOTIFICATION_COPY[reason];
+
+        if (!content) {
+            return;
+        }
+
+        const notification = new window.Notification(content.title, {
+            body: content.body,
+            tag: `family-market-${reason}`
+        });
+
+        notification.onclick = () => {
+            window.focus();
+            notification.close();
+        };
+    }
+
     function openFamilyManager() {
         setSettingsOpen(false);
         setFamilyManagerOpen(true);
@@ -384,12 +521,15 @@ export default function App() {
                 try {
                     const message = JSON.parse(event.data as string) as {
                         type?: string;
+                        reason?: string;
                         groupIds?: string[];
                     };
 
                     if (message.type !== "workspace.invalidate") {
                         return;
                     }
+
+                    maybeShowRealtimeNotification(message.reason);
 
                     void refreshLiveWorkspace(token, Array.isArray(message.groupIds) ? message.groupIds : undefined);
                 } catch {
@@ -1024,6 +1164,8 @@ export default function App() {
             themePreference={themePreference}
             resolvedTheme={resolvedTheme}
             setThemePreference={setThemePreference}
+            notificationPermission={notificationPermissionState}
+            notificationSupportMessage={notificationSupportMessage}
             selectedGroupInviteUrl={selectedGroupInviteUrl}
             busyAction={busyAction}
             error={error}
@@ -1040,6 +1182,7 @@ export default function App() {
                 })
             }
             onSaveVenmoHandle={handleSaveVenmoHandle}
+            onEnableNotifications={handleEnableNotifications}
             onRestartTutorial={handleRestartTutorial}
             onCreateGroup={handleCreateGroup}
             onJoinGroup={handleJoinGroup}

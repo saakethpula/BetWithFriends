@@ -41,6 +41,8 @@ type DashboardScreenProps = {
     themePreference: ThemePreference;
     resolvedTheme: ResolvedTheme;
     setThemePreference: (value: ThemePreference) => void;
+    notificationPermission: NotificationPermission | "unsupported";
+    notificationSupportMessage: string;
     selectedGroupInviteUrl: string;
     busyAction: string;
     error: string;
@@ -51,6 +53,7 @@ type DashboardScreenProps = {
     onOpenFamilyManager: () => void;
     onLogout: () => void;
     onSaveVenmoHandle: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+    onEnableNotifications: () => Promise<void>;
     onRestartTutorial: () => Promise<void>;
     onCreateGroup: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onJoinGroup: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -105,6 +108,8 @@ export function DashboardScreen({
     themePreference,
     resolvedTheme,
     setThemePreference,
+    notificationPermission,
+    notificationSupportMessage,
     selectedGroupInviteUrl,
     busyAction,
     error,
@@ -115,6 +120,7 @@ export function DashboardScreen({
     onOpenFamilyManager,
     onLogout,
     onSaveVenmoHandle,
+    onEnableNotifications,
     onRestartTutorial,
     onCreateGroup,
     onJoinGroup,
@@ -218,10 +224,13 @@ export function DashboardScreen({
                 themePreference={themePreference}
                 resolvedTheme={resolvedTheme}
                 setThemePreference={setThemePreference}
+                notificationPermission={notificationPermission}
+                notificationSupportMessage={notificationSupportMessage}
                 onClose={() => setSettingsOpen(false)}
                 onOpenFamilyManager={onOpenFamilyManager}
                 onCreateGroup={onCreateGroup}
                 onSaveVenmoHandle={onSaveVenmoHandle}
+                onEnableNotifications={onEnableNotifications}
                 onRestartTutorial={onRestartTutorial}
             />
 
