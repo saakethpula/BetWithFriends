@@ -1671,37 +1671,44 @@ button:disabled {
   }
 
   .toolbar-meta {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.75rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 0.65rem;
   }
 
   .toolbar-title {
-    flex: 1 1 auto;
+    grid-column: 1;
     min-width: 0;
   }
 
   .toolbar-title h1 {
-    font-size: 1.35rem;
+    font-size: 1.55rem;
+    overflow-wrap: anywhere;
   }
 
   .toolbar-right {
-    width: auto;
-    gap: 0.65rem;
+    display: contents;
   }
 
   .toolbar-balance {
-    flex: 0 1 auto;
+    grid-column: 2;
+    grid-row: 1;
     min-width: 0;
     justify-items: end;
+    align-self: end;
   }
 
   .toolbar-actions {
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
   }
 
   .toolbar-button {
+    width: 100%;
     padding: 0.62rem 0.78rem;
   }
 
@@ -1717,5 +1724,15 @@ button:disabled {
   .market-footer-actions {
     grid-auto-flow: row;
     justify-content: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .toolbar-meta {
+    column-gap: 0.5rem;
+  }
+
+  .toolbar-title h1 {
+    font-size: 1.35rem;
   }
 }
