@@ -7,7 +7,7 @@ import { LandingScreen } from "./components/LandingScreen";
 import { OnboardingScreen } from "./components/onboarding/OnboardingScreen";
 import { DEFAULT_TRADE_AMOUNT, GENERAL_MARKET_VALUE, FALLBACK_REFRESH_INTERVAL_MS, SOCKET_RECONNECT_MAX_DELAY_MS, SOCKET_RECONNECT_MIN_DELAY_MS } from "./constants/app";
 import { formatMoney, tomorrowAtNoon } from "./utils/format";
-import { buildGroupInviteUrl, clearReferralJoinCodeFromUrl, getReferralJoinCodeFromUrl } from "./utils/groups";
+import { buildGroupInviteUrl, clearReferralJoinCodeFromUrl, clearSavedReferralJoinCode, getReferralJoinCodeFromUrl, getSavedReferralJoinCode, saveReferralJoinCodeFromUrl } from "./utils/groups";
 import { getTutorialPrompt, resetTutorialState } from "./utils/tutorial";
 import { getVenmoUrl, normalizeVenmoHandle } from "./utils/venmo";
 const THEME_PREFERENCE_STORAGE_KEY = "family-market-theme-preference";
@@ -36,7 +36,7 @@ export default function App() {
     const [tradeDrafts, setTradeDrafts] = useState({});
     const [groupName, setGroupName] = useState("");
     const [joinCode, setJoinCode] = useState("");
-    const [referralJoinCode, setReferralJoinCode] = useState(() => getReferralJoinCodeFromUrl());
+    const [referralJoinCode, setReferralJoinCode] = useState(() => getReferralJoinCodeFromUrl() || getSavedReferralJoinCode());
     const [hasAttemptedReferralJoin, setHasAttemptedReferralJoin] = useState(false);
     const [venmoHandle, setVenmoHandle] = useState("");
     const [question, setQuestion] = useState("");
@@ -97,7 +97,7 @@ export default function App() {
         if (isLoading) {
             return;
         }
-        const nextReferralJoinCode = getReferralJoinCodeFromUrl();
+        const nextReferralJoinCode = getReferralJoinCodeFromUrl() || getSavedReferralJoinCode();
         if (nextReferralJoinCode && nextReferralJoinCode !== referralJoinCode) {
             setReferralJoinCode(nextReferralJoinCode);
             setHasAttemptedReferralJoin(false);
@@ -322,6 +322,7 @@ export default function App() {
         if (existingGroup) {
             setSelectedGroupId(existingGroup.id);
             setReferralJoinCode("");
+            clearSavedReferralJoinCode();
             clearReferralJoinCodeFromUrl();
             setStatusMessage(`Invite link opened for ${existingGroup.name}.`);
             return;
@@ -335,6 +336,7 @@ export default function App() {
                 setSelectedGroupId(response.groupId);
                 setJoinCode("");
                 setReferralJoinCode("");
+                clearSavedReferralJoinCode();
                 clearReferralJoinCodeFromUrl();
                 await refreshWorkspace(token, response.groupId);
                 setOnboardingStep((current) => current === 2 ? 3 : current);
@@ -394,6 +396,7 @@ export default function App() {
         try {
             await updateTutorialCompletion(token, true);
             await refreshProfile(token);
+            clearSavedReferralJoinCode();
             setShowOnboarding(false);
             setStatusMessage("Setup complete. Your desk is ready.");
         }
@@ -455,6 +458,7 @@ export default function App() {
             setSelectedGroupId(response.groupId);
             setJoinCode("");
             setReferralJoinCode("");
+            clearSavedReferralJoinCode();
             clearReferralJoinCodeFromUrl();
             await refreshWorkspace(token, response.groupId);
             setOnboardingStep((current) => current === 2 ? 3 : current);
@@ -675,6 +679,7 @@ export default function App() {
     }
     if (!isAuthenticated) {
         return (_jsx(LandingScreen, { onLogin: () => {
+                saveReferralJoinCodeFromUrl();
                 void loginWithRedirect({
                     appState: {
                         returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`

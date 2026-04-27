@@ -43,7 +43,10 @@ import { formatMoney, tomorrowAtNoon } from "./utils/format";
 import {
     buildGroupInviteUrl,
     clearReferralJoinCodeFromUrl,
-    getReferralJoinCodeFromUrl
+    clearSavedReferralJoinCode,
+    getReferralJoinCodeFromUrl,
+    getSavedReferralJoinCode,
+    saveReferralJoinCodeFromUrl
 } from "./utils/groups";
 import { getTutorialPrompt, resetTutorialState } from "./utils/tutorial";
 import { getVenmoUrl, normalizeVenmoHandle } from "./utils/venmo";
@@ -88,7 +91,7 @@ export default function App() {
     const [tradeDrafts, setTradeDrafts] = useState<Record<string, TradeDraft>>({});
     const [groupName, setGroupName] = useState("");
     const [joinCode, setJoinCode] = useState("");
-    const [referralJoinCode, setReferralJoinCode] = useState(() => getReferralJoinCodeFromUrl());
+    const [referralJoinCode, setReferralJoinCode] = useState(() => getReferralJoinCodeFromUrl() || getSavedReferralJoinCode());
     const [hasAttemptedReferralJoin, setHasAttemptedReferralJoin] = useState(false);
     const [venmoHandle, setVenmoHandle] = useState("");
     const [question, setQuestion] = useState("");
@@ -168,7 +171,7 @@ export default function App() {
             return;
         }
 
-        const nextReferralJoinCode = getReferralJoinCodeFromUrl();
+        const nextReferralJoinCode = getReferralJoinCodeFromUrl() || getSavedReferralJoinCode();
 
         if (nextReferralJoinCode && nextReferralJoinCode !== referralJoinCode) {
             setReferralJoinCode(nextReferralJoinCode);
@@ -440,6 +443,7 @@ export default function App() {
         if (existingGroup) {
             setSelectedGroupId(existingGroup.id);
             setReferralJoinCode("");
+            clearSavedReferralJoinCode();
             clearReferralJoinCodeFromUrl();
             setStatusMessage(`Invite link opened for ${existingGroup.name}.`);
             return;
@@ -455,6 +459,7 @@ export default function App() {
                 setSelectedGroupId(response.groupId);
                 setJoinCode("");
                 setReferralJoinCode("");
+                clearSavedReferralJoinCode();
                 clearReferralJoinCodeFromUrl();
                 await refreshWorkspace(token, response.groupId);
                 setOnboardingStep((current) => current === 2 ? 3 : current);
@@ -522,6 +527,7 @@ export default function App() {
         try {
             await updateTutorialCompletion(token, true);
             await refreshProfile(token);
+            clearSavedReferralJoinCode();
             setShowOnboarding(false);
             setStatusMessage("Setup complete. Your desk is ready.");
         } catch (requestError) {
@@ -583,6 +589,7 @@ export default function App() {
             setSelectedGroupId(response.groupId);
             setJoinCode("");
             setReferralJoinCode("");
+            clearSavedReferralJoinCode();
             clearReferralJoinCodeFromUrl();
             await refreshWorkspace(token, response.groupId);
             setOnboardingStep((current) => current === 2 ? 3 : current);
@@ -815,6 +822,7 @@ export default function App() {
         return (
             <LandingScreen
                 onLogin={() => {
+                    saveReferralJoinCodeFromUrl();
                     void loginWithRedirect({
                         appState: {
                             returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`
