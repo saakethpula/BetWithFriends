@@ -15,18 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Only run 8am-8pm America/New_York
-        shell: bash
-        run: |
-          set -euo pipefail
-          hour=$(TZ="America/New_York" date +%H)
-          # Allow 08:00 through 19:59 ET
-          if [ "$hour" -lt 8 ] || [ "$hour" -ge 23 ]; then
-            echo "Outside 8am-8pm ET (current ET hour: $hour). Exiting."
-            exit 0
-          fi
-          echo "Within 8am-8pm ET (current ET hour: $hour). Continuing."
-
       - name: Random delay (0-7 minutes)
         shell: bash
         run: |
