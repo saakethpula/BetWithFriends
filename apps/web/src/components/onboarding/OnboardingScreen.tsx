@@ -14,6 +14,7 @@ type OnboardingScreenProps = {
     canStartPractice: boolean;
     onboardingStep: number;
     setOnboardingStep: (updater: (current: number) => number) => void;
+    skipGroupSetupStep: boolean;
     groupSetupMode: GroupSetupMode;
     setGroupSetupMode: (mode: GroupSetupMode) => void;
     referralJoinCode: string;
@@ -54,6 +55,7 @@ export function OnboardingScreen({
     canStartPractice,
     onboardingStep,
     setOnboardingStep,
+    skipGroupSetupStep,
     groupSetupMode,
     setGroupSetupMode,
     referralJoinCode,
@@ -84,6 +86,12 @@ export function OnboardingScreen({
     const isVenmoSlide = onboardingStep === 1;
     const isGroupSlide = onboardingStep === 2;
     const isPracticeSlide = onboardingStep === 3;
+    const goToPreviousStep = () => {
+        setOnboardingStep((current) => skipGroupSetupStep && current === 3 ? 1 : Math.max(0, current - 1));
+    };
+    const goToNextStep = () => {
+        setOnboardingStep((current) => skipGroupSetupStep && current === 1 ? 3 : Math.min(TOTAL_ONBOARDING_STEPS - 1, current + 1));
+    };
 
     return (
         <main className="shell app-shell">
@@ -477,7 +485,7 @@ export function OnboardingScreen({
                                 className="ghost-button"
                                 type="button"
                                 disabled={onboardingStep === 0}
-                                onClick={() => setOnboardingStep((current) => Math.max(0, current - 1))}
+                                onClick={goToPreviousStep}
                             >
                                 Previous
                             </button>
@@ -491,7 +499,7 @@ export function OnboardingScreen({
                                         (isGroupSlide && needsFirstGroup) ||
                                         (isPracticeSlide && !canStartPractice)
                                     }
-                                    onClick={() => setOnboardingStep((current) => Math.min(TOTAL_ONBOARDING_STEPS - 1, current + 1))}
+                                    onClick={goToNextStep}
                                 >
                                     {isIntroSlide ? "Start tutorial" : isGroupSlide ? "Open live tutorial" : "Next"}
                                 </button>

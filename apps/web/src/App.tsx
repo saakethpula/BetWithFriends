@@ -92,6 +92,7 @@ export default function App() {
     const [groupName, setGroupName] = useState("");
     const [joinCode, setJoinCode] = useState("");
     const [referralJoinCode, setReferralJoinCode] = useState(() => getReferralJoinCodeFromUrl() || getSavedReferralJoinCode());
+    const [skipGroupSetupStep, setSkipGroupSetupStep] = useState(false);
     const [hasAttemptedReferralJoin, setHasAttemptedReferralJoin] = useState(false);
     const [venmoHandle, setVenmoHandle] = useState("");
     const [question, setQuestion] = useState("");
@@ -443,8 +444,10 @@ export default function App() {
         if (existingGroup) {
             setSelectedGroupId(existingGroup.id);
             setReferralJoinCode("");
+            setSkipGroupSetupStep(true);
             clearSavedReferralJoinCode();
             clearReferralJoinCodeFromUrl();
+            setOnboardingStep((current) => current === 2 ? 3 : current);
             setStatusMessage(`Invite link opened for ${existingGroup.name}.`);
             return;
         }
@@ -459,6 +462,7 @@ export default function App() {
                 setSelectedGroupId(response.groupId);
                 setJoinCode("");
                 setReferralJoinCode("");
+                setSkipGroupSetupStep(true);
                 clearSavedReferralJoinCode();
                 clearReferralJoinCodeFromUrl();
                 await refreshWorkspace(token, response.groupId);
@@ -528,6 +532,7 @@ export default function App() {
             await updateTutorialCompletion(token, true);
             await refreshProfile(token);
             clearSavedReferralJoinCode();
+            setSkipGroupSetupStep(false);
             setShowOnboarding(false);
             setStatusMessage("Setup complete. Your desk is ready.");
         } catch (requestError) {
@@ -550,6 +555,7 @@ export default function App() {
             setTutorialPracticeStep(resetState.tutorialPracticeStep);
             setTutorialBetPlaced(resetState.tutorialBetPlaced);
             setTutorialHoverTarget(null);
+            setSkipGroupSetupStep(false);
             setSettingsOpen(false);
             setShowOnboarding(true);
             setStatusMessage("Tutorial restarted. Walk through the setup again whenever you're ready.");
@@ -569,6 +575,7 @@ export default function App() {
             const group = await createGroup(token, groupName);
             setSelectedGroupId(group.id);
             setGroupName("");
+            setSkipGroupSetupStep(false);
             await refreshWorkspace(token, group.id);
             setOnboardingStep((current) => current === 2 ? 3 : current);
             setStatusMessage(`Created ${group.name}.`);
@@ -589,6 +596,7 @@ export default function App() {
             setSelectedGroupId(response.groupId);
             setJoinCode("");
             setReferralJoinCode("");
+            setSkipGroupSetupStep(false);
             clearSavedReferralJoinCode();
             clearReferralJoinCodeFromUrl();
             await refreshWorkspace(token, response.groupId);
@@ -662,7 +670,7 @@ export default function App() {
         try {
             await updateVenmoHandle(token, venmoHandle);
             await refreshProfile(token);
-            setOnboardingStep((current) => current === 1 ? 2 : current);
+            setOnboardingStep((current) => current === 1 ? (skipGroupSetupStep ? 3 : 2) : current);
             setStatusMessage(`Venmo handle saved as @${normalizeVenmoHandle(venmoHandle)}.`);
         } catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : "Failed to save Venmo handle.");
@@ -854,6 +862,7 @@ export default function App() {
                 canStartPractice={canStartPractice}
                 onboardingStep={onboardingStep}
                 setOnboardingStep={setOnboardingStep}
+                skipGroupSetupStep={skipGroupSetupStep}
                 groupSetupMode={groupSetupMode}
                 setGroupSetupMode={setGroupSetupMode}
                 referralJoinCode={referralJoinCode}
