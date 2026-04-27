@@ -530,9 +530,15 @@ marketsRouter.put("/:marketId/position", asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Enter a larger amount to add to this position." });
   }
 
-  if (amountToAdd < market.group.minBet || amountToAdd > market.group.maxBet) {
+  if (amountToAdd > market.group.maxBet) {
     return res.status(400).json({
-      message: `Your added stake must be between ${market.group.minBet} and ${market.group.maxBet}.`
+      message: `Your bet is too high. The maximum bet is ${market.group.maxBet}.`
+    });
+  }
+
+  if (amountToAdd < market.group.minBet) {
+    return res.status(400).json({
+      message: `Your bet is too low. The minimum bet is ${market.group.minBet}.`
     });
   }
 
