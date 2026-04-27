@@ -30,8 +30,9 @@ function buildChartPath(points: Array<{ x: number; y: number }>) {
 function MarketOddsChart({ market }: { market: Market }) {
     const chartWidth = 100;
     const chartHeight = 48;
-    const priceHistory = market.summary.priceHistory.length > 0
-        ? market.summary.priceHistory
+    const existingPriceHistory = market.summary.priceHistory ?? [];
+    const priceHistory = existingPriceHistory.length > 0
+        ? existingPriceHistory
         : [{ timestamp: null, outcomes: market.summary.outcomes.map(({ id, label, price }) => ({ id, label, price })) }];
     const pathPoints = market.summary.outcomes.map((outcome) => {
         const historyPoints = priceHistory.map((historyPoint, index) => {
@@ -105,9 +106,18 @@ export function MarketCard({
         market.resolutionProposedBy?.id !== profile.user.id &&
         !market.userResolutionConfirmation;
     const existingUserTotal = market.userPosition.totalAmount + market.userPendingPosition.totalAmount;
+    const confirmedUserTotal = market.userPosition.totalAmount;
     const draftAmount = Number(draft.amount || "0");
     const topUpAmount = Math.max(0, draftAmount - existingUserTotal);
     const isAboveMaxBet = draftAmount > maxBet;
+    const selectedOutcome = market.summary.outcomes.find((outcome) => outcome.id === draft.outcomeId);
+    const selectedUserAmount = market.userPosition.outcomeAmounts.find((outcome) => outcome.id === draft.outcomeId)?.amount ?? 0;
+    const previewTotalPot = Math.max(0, market.summary.totalVolume - confirmedUserTotal + draftAmount);
+    const previewOutcomeVolume = Math.max(0, (selectedOutcome?.volume ?? 0) - selectedUserAmount + draftAmount);
+    const currentPayout = draftAmount > 0 && previewOutcomeVolume > 0
+        ? Math.floor((previewTotalPot * draftAmount) / previewOutcomeVolume)
+        : 0;
+    const currentNet = currentPayout - draftAmount;
     const renderVenmoLink = (handle: string | null | undefined, fallback: string, amount?: number) => {
         const normalizedHandle = normalizeVenmoHandle(handle);
         const venmoUrl = getVenmoPaymentUrl(handle, amount, `Payment for ${market.question}`);
@@ -199,6 +209,11 @@ export function MarketCard({
                 >
                     {market.userPosition.totalAmount > 0 ? "Update position" : "Place position"}
                 </button>
+                <div className="payout-preview">
+                    <span>Current payout if {selectedOutcome?.label ?? "your choice"} wins</span>
+                    <strong>{formatMoney(currentPayout)}</strong>
+                    <small>Net {currentNet >= 0 ? "+" : ""}{formatMoney(currentNet)}</small>
+                </div>
                 {market.status === "OPEN" ? (
                     <p className="trade-note">
                         {isAboveMaxBet ? (

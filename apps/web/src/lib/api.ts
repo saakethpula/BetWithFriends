@@ -77,7 +77,7 @@ export type Market = {
       volume: number;
       price: number;
     }>;
-    priceHistory: Array<{
+    priceHistory?: Array<{
       timestamp?: string | null;
       outcomes: Array<{
         id: string;

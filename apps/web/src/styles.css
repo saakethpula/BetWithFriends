@@ -1295,6 +1295,31 @@ textarea::placeholder {
   line-height: 1.5;
 }
 
+.payout-preview {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0.85rem;
+  border-radius: 18px;
+  background: rgba(255, 252, 248, 0.76);
+  border: 1px solid rgba(126, 111, 93, 0.12);
+}
+
+.payout-preview span,
+.payout-preview small {
+  color: #6f5f50;
+  font-size: 0.86rem;
+}
+
+.payout-preview strong {
+  color: var(--ink);
+}
+
+.payout-preview small {
+  grid-column: 1 / -1;
+}
+
 .venmo-link {
   color: #8f7258;
   font-weight: 600;
