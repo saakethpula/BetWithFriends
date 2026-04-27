@@ -52,7 +52,12 @@ export function MarketCard({ market, profile, selectedGroupRole, maxBet, busyAct
         ? Math.floor((previewTotalPot * draftAmount) / previewOutcomeVolume)
         : 0;
     const currentNet = currentPayout - draftAmount;
-    const payoutToYou = market.status === "RESOLVED" ? market.userPayout : currentPayout;
+    const placedUserOutcome = market.userPosition.outcomeAmounts.find((outcome) => outcome.amount > 0);
+    const placedOutcome = market.summary.outcomes.find((outcome) => outcome.id === placedUserOutcome?.id);
+    const projectedPlacedPayout = placedUserOutcome && placedOutcome && placedOutcome.volume > 0
+        ? Math.floor((market.summary.totalVolume * placedUserOutcome.amount) / placedOutcome.volume)
+        : 0;
+    const payoutToYou = market.status === "RESOLVED" ? market.userPayout : projectedPlacedPayout;
     const renderVenmoLink = (handle, fallback, amount) => {
         const normalizedHandle = normalizeVenmoHandle(handle);
         const venmoUrl = getVenmoPaymentUrl(handle, amount, `Payment for ${market.question}`);
