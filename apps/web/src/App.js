@@ -93,6 +93,16 @@ export default function App() {
     useEffect(() => {
         document.documentElement.dataset.theme = resolvedTheme;
     }, [resolvedTheme]);
+    useEffect(() => {
+        if (isLoading) {
+            return;
+        }
+        const nextReferralJoinCode = getReferralJoinCodeFromUrl();
+        if (nextReferralJoinCode && nextReferralJoinCode !== referralJoinCode) {
+            setReferralJoinCode(nextReferralJoinCode);
+            setHasAttemptedReferralJoin(false);
+        }
+    }, [isLoading, isAuthenticated, referralJoinCode]);
     async function refreshProfile(accessToken) {
         const nextProfile = await getCurrentUser(accessToken);
         setProfile(nextProfile);
@@ -327,6 +337,7 @@ export default function App() {
                 setReferralJoinCode("");
                 clearReferralJoinCodeFromUrl();
                 await refreshWorkspace(token, response.groupId);
+                setOnboardingStep((current) => current === 2 ? 3 : current);
                 setStatusMessage("Joined the group from the invite link.");
             }
             catch (requestError) {
@@ -337,16 +348,6 @@ export default function App() {
             }
         })();
     }, [hasAttemptedReferralJoin, profile, referralJoinCode, token]);
-    useEffect(() => {
-        if (onboardingStep === 1 && !needsVenmoHandle) {
-            setOnboardingStep(2);
-        }
-    }, [needsVenmoHandle, onboardingStep]);
-    useEffect(() => {
-        if (onboardingStep === 2 && !needsFirstGroup) {
-            setOnboardingStep(3);
-        }
-    }, [needsFirstGroup, onboardingStep]);
     useEffect(() => {
         if (tutorialPracticeStep === "enter-amount" && tutorialAmountNumber > 0) {
             setTutorialPracticeStep("submit-bet");
@@ -435,6 +436,7 @@ export default function App() {
             setSelectedGroupId(group.id);
             setGroupName("");
             await refreshWorkspace(token, group.id);
+            setOnboardingStep((current) => current === 2 ? 3 : current);
             setStatusMessage(`Created ${group.name}.`);
         }
         catch (requestError) {
@@ -455,6 +457,7 @@ export default function App() {
             setReferralJoinCode("");
             clearReferralJoinCodeFromUrl();
             await refreshWorkspace(token, response.groupId);
+            setOnboardingStep((current) => current === 2 ? 3 : current);
             setStatusMessage("Joined the group.");
         }
         catch (requestError) {
@@ -518,6 +521,7 @@ export default function App() {
         try {
             await updateVenmoHandle(token, venmoHandle);
             await refreshProfile(token);
+            setOnboardingStep((current) => current === 1 ? 2 : current);
             setStatusMessage(`Venmo handle saved as @${normalizeVenmoHandle(venmoHandle)}.`);
         }
         catch (requestError) {
