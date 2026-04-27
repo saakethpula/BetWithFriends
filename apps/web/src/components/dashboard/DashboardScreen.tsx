@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { CurrentUserResponse, Market } from "../../lib/api";
 import { DEFAULT_TRADE_AMOUNT, GENERAL_MARKET_VALUE } from "../../constants/app";
 import type { ResolvedTheme, ThemePreference, TradeDraft } from "../../types/app";
@@ -128,6 +128,46 @@ export function DashboardScreen({
     onMarkPayoutSent,
     onRespondToPayout
 }: DashboardScreenProps) {
+    const [activeMarketIndex, setActiveMarketIndex] = useState(0);
+    const [touchStartX, setTouchStartX] = useState<number | null>(null);
+    const [createMarketOpen, setCreateMarketOpen] = useState(false);
+    const activeMarket = markets[activeMarketIndex] ?? markets[0];
+
+    useEffect(() => {
+        setActiveMarketIndex((current) => {
+            if (markets.length === 0) {
+                return 0;
+            }
+
+            return Math.min(current, markets.length - 1);
+        });
+    }, [markets.length]);
+
+    function goToMarket(offset: number) {
+        setActiveMarketIndex((current) => {
+            if (markets.length === 0) {
+                return 0;
+            }
+
+            return (current + offset + markets.length) % markets.length;
+        });
+    }
+
+    function handleMarketTouchEnd(clientX: number) {
+        if (touchStartX === null) {
+            return;
+        }
+
+        const deltaX = clientX - touchStartX;
+        setTouchStartX(null);
+
+        if (Math.abs(deltaX) < 48 || markets.length < 2) {
+            return;
+        }
+
+        goToMarket(deltaX < 0 ? 1 : -1);
+    }
+
     return (
         <main className="shell app-shell">
             <section className="dashboard-toolbar">
@@ -203,60 +243,25 @@ export function DashboardScreen({
                 onSaveBetLimits={onSaveBetLimits}
             />
 
-            <section className="dashboard-grid">
-                <aside className="sidebar-stack">
-                    <article className="panel family-strip family-panel">
-                        <div className="panel-heading">
+            {createMarketOpen ? (
+                <div className="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="create-market-title">
+                    <button
+                        className="settings-backdrop"
+                        type="button"
+                        aria-label="Close create market"
+                        onClick={() => setCreateMarketOpen(false)}
+                    />
+                    <section className="settings-modal create-market-modal">
+                        <div className="panel-heading settings-modal-heading">
                             <div>
-                                <p className="kicker">Current family</p>
-                                <h2>{selectedGroup?.name ?? "Choose a family group"}</h2>
+                                <p className="kicker">Create market</p>
+                                <h2 id="create-market-title">Launch a new thesis</h2>
                             </div>
-                            <button className="toolbar-button toolbar-button-secondary" type="button" onClick={onOpenFamilyManager}>
-                                Manage family
+                            <button className="toolbar-button toolbar-button-secondary" type="button" onClick={() => setCreateMarketOpen(false)}>
+                                Close
                             </button>
                         </div>
-                        <div className="family-strip-meta">
-                            <div className="compact-metric">
-                                <span className="metric-label">Members</span>
-                                <strong>{selectedGroup?.members.length ?? 0}</strong>
-                            </div>
-                            <div className="compact-metric">
-                                <span className="metric-label">Visible markets</span>
-                                <strong>{markets.length}</strong>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article className="panel leaderboard-panel">
-                        <div className="panel-heading">
-                            <div>
-                                <p className="kicker">Members</p>
-                                <h2>Win / loss board</h2>
-                            </div>
-                        </div>
-                        <div className="member-grid sidebar-members">
-                            {visibleMembers.map((member) => (
-                                <div key={member.id} className="member-card">
-                                    <div>
-                                        <strong>{member.displayName}</strong>
-                                        <span>{member.role}</span>
-                                    </div>
-                                    <strong>{formatSignedMoney(member.balance)}</strong>
-                                </div>
-                            ))}
-                        </div>
-                    </article>
-                </aside>
-
-                <section className="main-stack">
-                    <article className="panel create-panel">
-                        <div className="panel-heading">
-                            <div>
-                                <p className="kicker">Hidden market</p>
-                                <h2>Launch a new thesis</h2>
-                            </div>
-                            {selectedGroup ? <span className="subtle-copy">Live in {selectedGroup.name}</span> : null}
-                        </div>
+                        {selectedGroup ? <p className="subtle-copy modal-context">Live in {selectedGroup.name}</p> : null}
                         <form onSubmit={(event) => void onCreateMarket(event)} className="create-market-grid">
                             <select
                                 value={targetUserId}
@@ -331,8 +336,12 @@ export function DashboardScreen({
                                 Publish market
                             </button>
                         </form>
-                    </article>
+                    </section>
+                </div>
+            ) : null}
 
+            <section className="dashboard-grid">
+                <section className="main-stack">
                     <section className="market-board">
                         <div className="panel-heading board-heading">
                             <div>
@@ -349,43 +358,130 @@ export function DashboardScreen({
                                 <h3>No visible markets yet.</h3>
                                 <p>Once a market targets someone else in this group, it will show up here with editable positions and automatic settlement.</p>
                             </article>
-                        ) : (
-                            <div className="market-grid">
-                                {markets.map((market) => {
-                                    const draft = tradeDrafts[market.id] ?? {
-                                        outcomeId: market.userPosition.outcomeAmounts.find((outcome) => outcome.amount > 0)?.id ?? market.outcomes[0]?.id ?? "",
-                                        side: "YES" as const,
-                                        amount:
-                                            market.userPosition.totalAmount > 0
-                                                ? String(market.userPosition.totalAmount)
-                                                : DEFAULT_TRADE_AMOUNT
-                                    };
+                        ) : activeMarket ? (
+                            <div className="market-carousel">
+                                <div className="market-carousel-toolbar">
+                                    <button
+                                        className="ghost-button"
+                                        type="button"
+                                        disabled={markets.length < 2}
+                                        onClick={() => goToMarket(-1)}
+                                    >
+                                        Previous
+                                    </button>
+                                    <span className="subtle-copy">
+                                        {activeMarketIndex + 1} of {markets.length}
+                                    </span>
+                                    <button
+                                        className="ghost-button"
+                                        type="button"
+                                        disabled={markets.length < 2}
+                                        onClick={() => goToMarket(1)}
+                                    >
+                                        Next
+                                    </button>
+                                </div>
 
-                                    return (
-                                        <MarketCard
-                                            key={market.id}
-                                            market={market}
-                                            profile={profile}
-                                            selectedGroupRole={selectedGroup?.role}
-                                            maxBet={selectedGroup?.maxBet ?? 100000}
-                                            busyAction={busyAction}
-                                            draft={draft}
-                                            onUpdateTradeDraft={onUpdateTradeDraft}
-                                            onSavePosition={onSavePosition}
-                                            onConfirmPosition={onConfirmPosition}
-                                            onRejectPosition={onRejectPosition}
-                                            onResolveMarket={onResolve}
-                                            onConfirmMarketResolution={onConfirmMarketResolution}
-                                            onDeleteMarket={onDeleteMarket}
-                                            onMarkPayoutSent={onMarkPayoutSent}
-                                            onRespondToPayout={onRespondToPayout}
-                                        />
-                                    );
-                                })}
+                                <div
+                                    className="market-slide"
+                                    onTouchStart={(event) => setTouchStartX(event.touches[0]?.clientX ?? null)}
+                                    onTouchEnd={(event) => handleMarketTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
+                                >
+                                    <MarketCard
+                                        key={activeMarket.id}
+                                        market={activeMarket}
+                                        profile={profile}
+                                        selectedGroupRole={selectedGroup?.role}
+                                        maxBet={selectedGroup?.maxBet ?? 100000}
+                                        busyAction={busyAction}
+                                        draft={tradeDrafts[activeMarket.id] ?? {
+                                            outcomeId: activeMarket.userPosition.outcomeAmounts.find((outcome) => outcome.amount > 0)?.id ?? activeMarket.outcomes[0]?.id ?? "",
+                                            side: "YES" as const,
+                                            amount:
+                                                activeMarket.userPosition.totalAmount > 0
+                                                    ? String(activeMarket.userPosition.totalAmount)
+                                                    : DEFAULT_TRADE_AMOUNT
+                                        }}
+                                        onUpdateTradeDraft={onUpdateTradeDraft}
+                                        onSavePosition={onSavePosition}
+                                        onConfirmPosition={onConfirmPosition}
+                                        onRejectPosition={onRejectPosition}
+                                        onResolveMarket={onResolve}
+                                        onConfirmMarketResolution={onConfirmMarketResolution}
+                                        onDeleteMarket={onDeleteMarket}
+                                        onMarkPayoutSent={onMarkPayoutSent}
+                                        onRespondToPayout={onRespondToPayout}
+                                    />
+                                </div>
+
+                                {markets.length > 1 ? (
+                                    <div className="market-carousel-dots" aria-label="Choose market">
+                                        {markets.map((market, index) => (
+                                            <button
+                                                key={market.id}
+                                                className={index === activeMarketIndex ? "carousel-dot active" : "carousel-dot"}
+                                                type="button"
+                                                aria-label={`Show market ${index + 1}`}
+                                                onClick={() => setActiveMarketIndex(index)}
+                                            />
+                                        ))}
+                                    </div>
+                                ) : null}
                             </div>
-                        )}
+                        ) : null}
                     </section>
                 </section>
+
+                <aside className="sidebar-stack">
+                    <article className="panel family-strip family-panel">
+                        <div className="panel-heading">
+                            <div>
+                                <p className="kicker">Current family</p>
+                                <h2>{selectedGroup?.name ?? "Choose a family group"}</h2>
+                            </div>
+                            <button className="toolbar-button toolbar-button-secondary" type="button" onClick={onOpenFamilyManager}>
+                                Manage family
+                            </button>
+                        </div>
+                        <button
+                            className="primary-button create-market-trigger"
+                            type="button"
+                            disabled={!selectedGroupId}
+                            onClick={() => setCreateMarketOpen(true)}
+                        >
+                            Create market
+                        </button>
+                        <div className="family-strip-meta">
+                            <div className="compact-metric">
+                                <span className="metric-label">Members</span>
+                                <strong>{selectedGroup?.members.length ?? 0}</strong>
+                            </div>
+                            <div className="compact-metric">
+                                <span className="metric-label">Visible markets</span>
+                                <strong>{markets.length}</strong>
+                            </div>
+                        </div>
+                    </article>
+                    <article className="panel leaderboard-panel">
+                        <div className="panel-heading">
+                            <div>
+                                <p className="kicker">Members</p>
+                                <h2>Win / loss board</h2>
+                            </div>
+                        </div>
+                        <div className="member-grid sidebar-members">
+                            {visibleMembers.map((member) => (
+                                <div key={member.id} className="member-card">
+                                    <div>
+                                        <strong>{member.displayName}</strong>
+                                        <span>{member.role}</span>
+                                    </div>
+                                    <strong>{formatSignedMoney(member.balance)}</strong>
+                                </div>
+                            ))}
+                        </div>
+                    </article>
+                </aside>
             </section>
         </main>
     );

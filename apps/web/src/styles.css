@@ -885,7 +885,7 @@ textarea::placeholder {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(290px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
   gap: 1.25rem;
   align-items: start;
 }
@@ -1125,6 +1125,44 @@ textarea::placeholder {
   min-width: 0;
 }
 
+.market-carousel {
+  display: grid;
+  gap: 0.9rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.market-carousel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.market-slide {
+  min-width: 0;
+  touch-action: pan-y;
+}
+
+.market-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 20px;
+}
+
+.carousel-dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 999px;
+  background: rgba(126, 111, 93, 0.22);
+}
+
+.carousel-dot.active {
+  background: var(--text);
+}
+
 .market-panel {
   padding: 1.3rem;
   display: grid;
@@ -1280,13 +1318,20 @@ textarea::placeholder {
   justify-content: end;
 }
 
-.create-panel {
-  position: relative;
-  overflow: hidden;
+.create-market-modal {
+  width: min(720px, calc(100vw - 2.5rem));
 }
 
 .create-market-grid {
   margin-top: 1rem;
+}
+
+.modal-context {
+  margin: 0;
+}
+
+.create-market-trigger {
+  width: 100%;
 }
 
 .empty-panel,
@@ -1332,22 +1377,6 @@ button:disabled {
 
   .sidebar-stack {
     order: 2;
-  }
-
-  .market-board {
-    order: 1;
-  }
-
-  .create-panel {
-    order: 2;
-  }
-
-  .leaderboard-panel {
-    order: 3;
-  }
-
-  .family-panel {
-    order: 4;
   }
 
   .toolbar-meta,
