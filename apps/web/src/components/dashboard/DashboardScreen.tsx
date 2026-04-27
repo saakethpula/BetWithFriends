@@ -392,7 +392,7 @@ export function DashboardScreen({
                                         market={activeMarket}
                                         profile={profile}
                                         selectedGroupRole={selectedGroup?.role}
-                                        maxBet={selectedGroup?.maxBet ?? 100000}
+                                        maxBet={selectedGroup?.maxBet ?? 15}
                                         busyAction={busyAction}
                                         draft={tradeDrafts[activeMarket.id] ?? {
                                             outcomeId: activeMarket.userPosition.outcomeAmounts.find((outcome) => outcome.amount > 0)?.id ?? activeMarket.outcomes[0]?.id ?? "",

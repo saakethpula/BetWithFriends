@@ -530,9 +530,9 @@ marketsRouter.put("/:marketId/position", asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "Enter a larger amount to add to this position." });
   }
 
-  if (amountToAdd > market.group.maxBet) {
+  if (input.amount > market.group.maxBet) {
     return res.status(400).json({
-      message: `Your bet is too high. The maximum bet is ${market.group.maxBet}.`
+      message: `Your bet is too high. The maximum per market is ${market.group.maxBet}.`
     });
   }
 

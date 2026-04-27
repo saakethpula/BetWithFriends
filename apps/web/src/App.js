@@ -45,7 +45,7 @@ export default function App() {
     const [targetUserId, setTargetUserId] = useState("");
     const [outcomeLabels, setOutcomeLabels] = useState(["YES", "NO"]);
     const [minBet, setMinBet] = useState("1");
-    const [maxBet, setMaxBet] = useState("100000");
+    const [maxBet, setMaxBet] = useState("15");
     const [closesAt, setClosesAt] = useState(tomorrowAtNoon());
     const [statusMessage, setStatusMessage] = useState("Sign in to launch your prediction desk.");
     const [error, setError] = useState("");

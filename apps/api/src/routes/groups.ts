@@ -17,8 +17,8 @@ const joinGroupSchema = z.object({
 });
 
 const updateBetLimitsSchema = z.object({
-  minBet: z.coerce.number().int().min(1).max(100000),
-  maxBet: z.coerce.number().int().min(1).max(100000)
+  minBet: z.coerce.number().int().min(1).max(15),
+  maxBet: z.coerce.number().int().min(1).max(15)
 }).refine((value) => value.minBet <= value.maxBet, {
   message: "Minimum bet must be less than or equal to maximum bet."
 });

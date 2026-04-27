@@ -148,10 +148,11 @@ export function FamilyManagerModal({
                         {selectedGroup && selectedGroup.role === "ADMIN" ? (
                             <div className="form-stack compact-form">
                                 <form className="form-stack" onSubmit={(event) => void onSaveBetLimits(event)}>
-                                    <span className="subtle-copy">Bet limits</span>
+                                    <span className="subtle-copy">Per-market limits</span>
                                     <input
                                         type="number"
                                         min="1"
+                                        max="15"
                                         value={minBet}
                                         onChange={(event) => setMinBet(event.target.value)}
                                         placeholder="Minimum bet"
@@ -160,9 +161,10 @@ export function FamilyManagerModal({
                                     <input
                                         type="number"
                                         min="1"
+                                        max="15"
                                         value={maxBet}
                                         onChange={(event) => setMaxBet(event.target.value)}
-                                        placeholder="Maximum bet"
+                                        placeholder="Maximum per market"
                                         required
                                     />
                                     <button className="ghost-button" type="submit" disabled={busyAction === "bet-limits"}>

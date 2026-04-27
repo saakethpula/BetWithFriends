@@ -50,7 +50,7 @@ export function MarketCard({
     const existingUserTotal = market.userPosition.totalAmount + market.userPendingPosition.totalAmount;
     const draftAmount = Number(draft.amount || "0");
     const topUpAmount = Math.max(0, draftAmount - existingUserTotal);
-    const isAboveMaxBet = topUpAmount > maxBet;
+    const isAboveMaxBet = draftAmount > maxBet;
 
     return (
         <article className="market-panel">
@@ -131,7 +131,7 @@ export function MarketCard({
                 {market.status === "OPEN" ? (
                     <p className="trade-note">
                         {isAboveMaxBet ? (
-                            <>The maximum bet is {formatMoney(maxBet)}.</>
+                            <>The maximum per market is {formatMoney(maxBet)}.</>
                         ) : (
                             <>
                                 After saving, send {formatMoney(topUpAmount)} to{" "}
