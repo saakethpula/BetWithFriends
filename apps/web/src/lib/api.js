@@ -116,3 +116,8 @@ export function rejectPosition(token, marketId, positionId) {
         method: "DELETE"
     });
 }
+export function markCollectionSettled(token, marketId, userId) {
+    return request(`/api/markets/${marketId}/collections/${userId}/settled`, token, {
+        method: "POST"
+    });
+}

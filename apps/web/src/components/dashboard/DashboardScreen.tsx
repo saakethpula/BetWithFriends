@@ -68,6 +68,7 @@ type DashboardScreenProps = {
     onDeleteMarket: (marketId: string) => Promise<void>;
     onMarkPayoutSent: (marketId: string, payoutId: string) => Promise<void>;
     onRespondToPayout: (marketId: string, payoutId: string, received: boolean) => Promise<void>;
+    onMarkCollectionSettled: (marketId: string, userId: string) => Promise<void>;
 };
 
 export function DashboardScreen({
@@ -130,7 +131,8 @@ export function DashboardScreen({
     onConfirmMarketResolution,
     onDeleteMarket,
     onMarkPayoutSent,
-    onRespondToPayout
+    onRespondToPayout,
+    onMarkCollectionSettled
 }: DashboardScreenProps) {
     const [activeMarketIndex, setActiveMarketIndex] = useState(0);
     const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -417,6 +419,7 @@ export function DashboardScreen({
                                         onDeleteMarket={onDeleteMarket}
                                         onMarkPayoutSent={onMarkPayoutSent}
                                         onRespondToPayout={onRespondToPayout}
+                                        onMarkCollectionSettled={onMarkCollectionSettled}
                                     />
                                 </div>
 

@@ -100,6 +100,7 @@ type SerializableMarket = {
     amount: number;
     createdAt: Date;
     confirmedAt: Date | null;
+    settledAt: Date | null;
     user?: {
       id: string;
       displayName: string;
@@ -313,15 +314,33 @@ function serializeMarket(market: SerializableMarket, currentUserId: string) {
         userId: position.userId,
         displayName: position.user?.displayName ?? "Family member",
         venmoHandle: position.user?.venmoHandle ?? null,
-        amount: 0
+        positions: [] as typeof confirmedPositions
       }])
   ).values()]
-    .map((entry) => ({
-      ...entry,
-      amount: confirmedPositions
-        .filter((position) => position.userId === entry.userId)
-        .reduce((total, position) => total + position.amount, 0)
-    }))
+    .map((entry) => {
+      const userPositions = confirmedPositions.filter((position) => position.userId === entry.userId);
+      const amount = userPositions.reduce((total, position) => total + position.amount, 0);
+      const unsettledAmount = userPositions
+        .filter((position) => !position.settledAt)
+        .reduce((total, position) => total + position.amount, 0);
+      const settled = amount > 0 && unsettledAmount === 0;
+      const latestSettledAt = settled
+        ? userPositions
+          .map((position) => position.settledAt)
+          .filter((timestamp): timestamp is Date => timestamp instanceof Date)
+          .sort((left, right) => right.getTime() - left.getTime())[0] ?? null
+        : null;
+
+      return {
+        userId: entry.userId,
+        displayName: entry.displayName,
+        venmoHandle: entry.venmoHandle,
+        amount,
+        unsettledAmount,
+        settled,
+        settledAt: latestSettledAt
+      };
+    })
     .filter((entry) => entry.amount > 0)
     .sort((left, right) => right.amount - left.amount);
   const pendingConfirmations = pendingPositions
@@ -433,6 +452,54 @@ marketsRouter.get("/", asyncHandler(async (req, res) => {
   res.json(
     markets.map((market) => serializeMarket(market, currentUser.id))
   );
+}));
+
+marketsRouter.post("/:marketId/collections/:userId/settled", asyncHandler(async (req, res) => {
+  const currentUser = req.currentUser!;
+  const marketId = z.string().parse(req.params.marketId);
+  const userId = z.string().parse(req.params.userId);
+
+  const market = await findDetailedMarket(marketId);
+
+  if (!market) {
+    return res.status(404).json({ message: "Market not found." });
+  }
+
+  const membership = await prisma.groupMembership.findUnique({
+    where: {
+      userId_groupId: {
+        userId: currentUser.id,
+        groupId: market.groupId
+      }
+    }
+  });
+
+  if (!membership || membership.role !== GroupRole.ADMIN) {
+    return res.status(403).json({ message: "Only group admins can mark collections as settled." });
+  }
+
+  if (userId === market.createdByUserId) {
+    return res.status(400).json({ message: "The market creator cannot be marked as owing this market." });
+  }
+
+  const updatedMarket = await prisma.$transaction(async (tx) => {
+    await tx.position.updateMany({
+      where: {
+        marketId,
+        userId,
+        status: PositionStatus.CONFIRMED,
+        settledAt: null
+      },
+      data: {
+        settledAt: new Date()
+      }
+    });
+
+    return findDetailedMarketOrThrow(tx, marketId);
+  });
+
+  void notifyGroupMembers(updatedMarket.groupId, "market.collection.settled");
+  res.json(serializeMarket(updatedMarket, currentUser.id));
 }));
 
 marketsRouter.post("/", asyncHandler(async (req, res) => {

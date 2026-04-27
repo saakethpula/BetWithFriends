@@ -1,7 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { confirmMarketResolution, confirmPosition, createGroup, createMarket, deleteGroup, deleteMarket, getCurrentUser, getMarkets, getRealtimeWebSocketUrl, joinGroup, markPayoutSent, removeGroupMember, rejectPosition, respondToPayout, resolveMarket, updateGroupBetLimits, updateTutorialCompletion, updateVenmoHandle, upsertPosition } from "./lib/api";
+import { confirmMarketResolution, confirmPosition, createGroup, createMarket, deleteGroup, deleteMarket, getCurrentUser, getMarkets, getRealtimeWebSocketUrl, joinGroup, markPayoutSent, markCollectionSettled, removeGroupMember, rejectPosition, respondToPayout, resolveMarket, updateGroupBetLimits, updateTutorialCompletion, updateVenmoHandle, upsertPosition } from "./lib/api";
 import { DashboardScreen } from "./components/dashboard/DashboardScreen";
 import { LandingScreen } from "./components/LandingScreen";
 import { OnboardingScreen } from "./components/onboarding/OnboardingScreen";
@@ -752,6 +752,21 @@ export default function App() {
             setBusyAction("");
         }
     }
+    async function handleMarkCollectionSettled(marketId, userId) {
+        setError("");
+        setBusyAction(`collection-settled-${marketId}-${userId}`);
+        try {
+            await markCollectionSettled(token, marketId, userId);
+            await refreshWorkspace(token, selectedGroupId);
+            setStatusMessage("Collection marked as settled.");
+        }
+        catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : "Failed to mark collection as settled.");
+        }
+        finally {
+            setBusyAction("");
+        }
+    }
     if (isLoading) {
         return _jsx("main", { className: "shell", children: _jsx("section", { className: "loading-panel", children: "Loading authentication..." }) });
     }
@@ -775,5 +790,5 @@ export default function App() {
             logoutParams: {
                 returnTo: window.location.origin
             }
-        }), onSaveVenmoHandle: handleSaveVenmoHandle, onRestartTutorial: handleRestartTutorial, onCreateGroup: handleCreateGroup, onJoinGroup: handleJoinGroup, onCopyInviteLink: copyInviteLink, onRemoveGroupMember: handleRemoveGroupMember, onDeleteGroup: handleDeleteGroup, onSaveBetLimits: handleSaveBetLimits, onCreateMarket: handleCreateMarket, onUpdateTradeDraft: updateTradeDraft, onSavePosition: handleSavePosition, onConfirmPosition: handleConfirmPosition, onRejectPosition: handleRejectPosition, onResolve: handleResolve, onConfirmMarketResolution: handleConfirmMarketResolution, onDeleteMarket: handleDeleteMarket, onMarkPayoutSent: handleMarkPayoutSent, onRespondToPayout: handleRespondToPayout }));
+        }), onSaveVenmoHandle: handleSaveVenmoHandle, onRestartTutorial: handleRestartTutorial, onCreateGroup: handleCreateGroup, onJoinGroup: handleJoinGroup, onCopyInviteLink: copyInviteLink, onRemoveGroupMember: handleRemoveGroupMember, onDeleteGroup: handleDeleteGroup, onSaveBetLimits: handleSaveBetLimits, onCreateMarket: handleCreateMarket, onUpdateTradeDraft: updateTradeDraft, onSavePosition: handleSavePosition, onConfirmPosition: handleConfirmPosition, onRejectPosition: handleRejectPosition, onResolve: handleResolve, onConfirmMarketResolution: handleConfirmMarketResolution, onDeleteMarket: handleDeleteMarket, onMarkPayoutSent: handleMarkPayoutSent, onRespondToPayout: handleRespondToPayout, onMarkCollectionSettled: handleMarkCollectionSettled }));
 }

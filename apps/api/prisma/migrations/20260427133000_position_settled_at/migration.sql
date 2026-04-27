@@ -1,0 +1,2 @@
+ALTER TABLE "Position"
+ADD COLUMN "settledAt" TIMESTAMP(3);

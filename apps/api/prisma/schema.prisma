@@ -134,6 +134,7 @@ model Position {
   amount      Int
   createdAt   DateTime       @default(now())
   confirmedAt DateTime?
+  settledAt   DateTime?
   market      Market         @relation(fields: [marketId], references: [id], onDelete: Cascade)
   outcome     MarketOutcome? @relation(fields: [outcomeId], references: [id], onDelete: SetNull)
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)

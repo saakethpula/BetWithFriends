@@ -140,6 +140,9 @@ export type Market = {
     displayName: string;
     venmoHandle?: string | null;
     amount: number;
+    unsettledAmount: number;
+    settled: boolean;
+    settledAt?: string | null;
   }>;
   payoutConfirmations: Array<{
     id: string;
@@ -356,5 +359,11 @@ export function respondToPayout(token: string, marketId: string, payoutId: strin
 export function rejectPosition(token: string, marketId: string, positionId: string) {
   return request<Market>(`/api/markets/${marketId}/positions/${positionId}`, token, {
     method: "DELETE"
+  });
+}
+
+export function markCollectionSettled(token: string, marketId: string, userId: string) {
+  return request<Market>(`/api/markets/${marketId}/collections/${userId}/settled`, token, {
+    method: "POST"
   });
 }

@@ -12,6 +12,7 @@ import {
     getRealtimeWebSocketUrl,
     joinGroup,
     markPayoutSent,
+    markCollectionSettled,
     removeGroupMember,
     rejectPosition,
     respondToPayout,
@@ -903,6 +904,21 @@ export default function App() {
         }
     }
 
+    async function handleMarkCollectionSettled(marketId: string, userId: string) {
+        setError("");
+        setBusyAction(`collection-settled-${marketId}-${userId}`);
+
+        try {
+            await markCollectionSettled(token, marketId, userId);
+            await refreshWorkspace(token, selectedGroupId);
+            setStatusMessage("Collection marked as settled.");
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : "Failed to mark collection as settled.");
+        } finally {
+            setBusyAction("");
+        }
+    }
+
     if (isLoading) {
         return <main className="shell"><section className="loading-panel">Loading authentication...</section></main>;
     }
@@ -1041,6 +1057,7 @@ export default function App() {
             onDeleteMarket={handleDeleteMarket}
             onMarkPayoutSent={handleMarkPayoutSent}
             onRespondToPayout={handleRespondToPayout}
+            onMarkCollectionSettled={handleMarkCollectionSettled}
         />
     );
 }

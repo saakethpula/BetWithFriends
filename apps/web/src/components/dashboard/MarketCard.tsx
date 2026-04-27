@@ -21,6 +21,7 @@ type MarketCardProps = {
     onDeleteMarket: (marketId: string) => Promise<void>;
     onMarkPayoutSent: (marketId: string, payoutId: string) => Promise<void>;
     onRespondToPayout: (marketId: string, payoutId: string, received: boolean) => Promise<void>;
+    onMarkCollectionSettled: (marketId: string, userId: string) => Promise<void>;
 };
 
 const OUTCOME_LINE_COLORS = ["#4f8f85", "#c98d82", "#c7a56a", "#6b7fa7", "#9b7bb4"];
@@ -173,7 +174,8 @@ export function MarketCard({
     onConfirmMarketResolution,
     onDeleteMarket,
     onMarkPayoutSent,
-    onRespondToPayout
+    onRespondToPayout,
+    onMarkCollectionSettled
 }: MarketCardProps) {
     const canRemove = market.createdBy.id === profile.user.id || selectedGroupRole === "ADMIN";
     const resolutionOutcome = market.outcomes.find((outcome) => outcome.id === market.resolutionOutcomeId);
@@ -201,6 +203,10 @@ export function MarketCard({
         ? Math.floor((market.summary.totalVolume * placedUserOutcome.amount) / placedOutcome.volume)
         : 0;
     const payoutToYou = market.status === "RESOLVED" ? market.userPayout : projectedPlacedPayout;
+    const currentUserCollection = market.creatorCollections.find((entry) => entry.userId === profile.user.id);
+    const unsettledOwedAmount = currentUserCollection?.unsettledAmount ?? 0;
+    const hasUnsettledBalance = unsettledOwedAmount > 0 && !currentUserCollection?.settled;
+    const shouldShowTradeNote = isAboveMaxBet || requireVenmoForBets || hasUnsettledBalance;
     const renderVenmoLink = (handle: string | null | undefined, fallback: string, amount?: number) => {
         const normalizedHandle = normalizeVenmoHandle(handle);
         const venmoUrl = getVenmoPaymentUrl(handle, amount, `Payment for ${market.question}`);
@@ -297,7 +303,7 @@ export function MarketCard({
                     <strong>{formatMoney(currentPayout)}</strong>
                     <small>Net {currentNet >= 0 ? "+" : ""}{formatMoney(currentNet)}</small>
                 </div>
-                {market.status === "OPEN" ? (
+                {market.status === "OPEN" && shouldShowTradeNote ? (
                     <p className="trade-note">
                         {isAboveMaxBet ? (
                             <>The maximum per market is {formatMoney(maxBet)}.</>
@@ -309,11 +315,11 @@ export function MarketCard({
                                     and wait for creator confirmation before your stake goes live.
                                 </>
                             ) : (
-                                <>
-                                    Your stake is live immediately. You can optionally send {formatMoney(topUpAmount)} to{" "}
-                                    {renderVenmoLink(market.venmoRecipient.venmoHandle, market.venmoRecipient.displayName, topUpAmount)}{" "}
-                                    on good faith to settle with the market creator.
-                                </>
+                                hasUnsettledBalance ? (
+                                    <>
+                                        You owe {market.createdBy.displayName} {formatMoney(unsettledOwedAmount)}.
+                                    </>
+                                ) : null
                             )
                         )}
                     </p>
@@ -366,7 +372,7 @@ export function MarketCard({
                 </div>
             ) : null}
 
-            {!requireVenmoForBets && market.createdBy.id === profile.user.id && market.creatorCollections.length > 0 ? (
+            {!requireVenmoForBets && (market.createdBy.id === profile.user.id || selectedGroupRole === "ADMIN") && market.creatorCollections.length > 0 ? (
                 <div className="settlement-box">
                     <div className="settlement-heading">
                         <span className="kicker">Collection sheet</span>
@@ -377,9 +383,27 @@ export function MarketCard({
                             <div key={entry.userId} className="settlement-row">
                                 <div>
                                     <span>{renderVenmoLink(entry.venmoHandle, entry.displayName, entry.amount)}</span>
-                                    <small>{formatMoney(entry.amount)} total stake</small>
+                                    <small>
+                                        {entry.settled
+                                            ? `Settled ${entry.settledAt ? new Date(entry.settledAt).toLocaleString() : ""}`
+                                            : `${formatMoney(entry.unsettledAmount)} unsettled of ${formatMoney(entry.amount)} total`}
+                                    </small>
                                 </div>
-                                <strong>{formatMoney(entry.amount)}</strong>
+                                <div className="market-footer-actions">
+                                    <strong>{formatMoney(entry.amount)}</strong>
+                                    {!entry.settled ? (
+                                        <button
+                                            className="ghost-button yes-outline"
+                                            type="button"
+                                            disabled={busyAction === `collection-settled-${market.id}-${entry.userId}`}
+                                            onClick={() => void onMarkCollectionSettled(market.id, entry.userId)}
+                                        >
+                                            Mark settled
+                                        </button>
+                                    ) : (
+                                        <span className="subtle-copy">Settled</span>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
