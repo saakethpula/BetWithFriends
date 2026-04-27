@@ -367,6 +367,7 @@ export function DashboardScreen({
                                             market={market}
                                             profile={profile}
                                             selectedGroupRole={selectedGroup?.role}
+                                            maxBet={selectedGroup?.maxBet ?? 100000}
                                             busyAction={busyAction}
                                             draft={draft}
                                             onUpdateTradeDraft={onUpdateTradeDraft}

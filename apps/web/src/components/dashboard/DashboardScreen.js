@@ -15,6 +15,6 @@ export function DashboardScreen({ profile, selectedGroup, selectedGroupId, setSe
                                                     ? String(market.userPosition.totalAmount)
                                                     : DEFAULT_TRADE_AMOUNT
                                             };
-                                            return (_jsx(MarketCard, { market: market, profile: profile, selectedGroupRole: selectedGroup?.role, busyAction: busyAction, draft: draft, onUpdateTradeDraft: onUpdateTradeDraft, onSavePosition: onSavePosition, onConfirmPosition: onConfirmPosition, onRejectPosition: onRejectPosition, onResolveMarket: onResolve, onConfirmMarketResolution: onConfirmMarketResolution, onDeleteMarket: onDeleteMarket, onMarkPayoutSent: onMarkPayoutSent, onRespondToPayout: onRespondToPayout }, market.id));
+                                            return (_jsx(MarketCard, { market: market, profile: profile, selectedGroupRole: selectedGroup?.role, maxBet: selectedGroup?.maxBet ?? 100000, busyAction: busyAction, draft: draft, onUpdateTradeDraft: onUpdateTradeDraft, onSavePosition: onSavePosition, onConfirmPosition: onConfirmPosition, onRejectPosition: onRejectPosition, onResolveMarket: onResolve, onConfirmMarketResolution: onConfirmMarketResolution, onDeleteMarket: onDeleteMarket, onMarkPayoutSent: onMarkPayoutSent, onRespondToPayout: onRespondToPayout }, market.id));
                                         }) }))] })] })] })] }));
 }

@@ -7,6 +7,7 @@ type MarketCardProps = {
     market: Market;
     profile: CurrentUserResponse;
     selectedGroupRole?: "ADMIN" | "MEMBER";
+    maxBet: number;
     busyAction: string;
     draft: TradeDraft;
     onUpdateTradeDraft: (marketId: string, patch: Partial<TradeDraft>) => void;
@@ -24,6 +25,7 @@ export function MarketCard({
     market,
     profile,
     selectedGroupRole,
+    maxBet,
     busyAction,
     draft,
     onUpdateTradeDraft,
@@ -48,6 +50,7 @@ export function MarketCard({
     const existingUserTotal = market.userPosition.totalAmount + market.userPendingPosition.totalAmount;
     const draftAmount = Number(draft.amount || "0");
     const topUpAmount = Math.max(0, draftAmount - existingUserTotal);
+    const isAboveMaxBet = topUpAmount > maxBet;
 
     return (
         <article className="market-panel">
@@ -120,22 +123,28 @@ export function MarketCard({
                 <button
                     className="primary-button"
                     type="button"
-                    disabled={busyAction === `position-${market.id}` || market.status !== "OPEN"}
+                    disabled={busyAction === `position-${market.id}` || market.status !== "OPEN" || isAboveMaxBet}
                     onClick={() => void onSavePosition(market.id)}
                 >
                     {market.userPosition.totalAmount > 0 ? "Update position" : "Place position"}
                 </button>
                 {market.status === "OPEN" ? (
                     <p className="trade-note">
-                        After saving, send {formatMoney(topUpAmount)} to{" "}
-                        {recipientUrl ? (
-                            <a className="venmo-link" href={recipientUrl} target="_blank" rel="noreferrer">
-                                @{recipientHandle}
-                            </a>
+                        {isAboveMaxBet ? (
+                            <>The maximum bet is {formatMoney(maxBet)}.</>
                         ) : (
-                            market.venmoRecipient.displayName
-                        )}{" "}
-                        so the market creator can escrow the pool.
+                            <>
+                                After saving, send {formatMoney(topUpAmount)} to{" "}
+                                {recipientUrl ? (
+                                    <a className="venmo-link" href={recipientUrl} target="_blank" rel="noreferrer">
+                                        @{recipientHandle}
+                                    </a>
+                                ) : (
+                                    market.venmoRecipient.displayName
+                                )}{" "}
+                                so the market creator can escrow the pool.
+                            </>
+                        )}
                     </p>
                 ) : null}
                 {market.userPendingPosition.totalAmount > 0 ? (
