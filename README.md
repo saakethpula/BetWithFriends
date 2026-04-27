@@ -1,4 +1,4 @@
-# Family Prediction Market
+# Bet With Friends
 
 A private, Kalshi-inspired prediction market for family use. Family members can create markets about each other, while the person a market is about is prevented from seeing or participating in it.
 

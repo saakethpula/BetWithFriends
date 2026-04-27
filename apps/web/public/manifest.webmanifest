@@ -1,6 +1,6 @@
 {
-  "name": "Family Prediction Market",
-  "short_name": "FamilyMarket",
+  "name": "Bet With Friends",
+  "short_name": "Bet Friends",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4efe4",

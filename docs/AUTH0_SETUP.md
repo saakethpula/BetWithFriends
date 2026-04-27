@@ -4,7 +4,7 @@
 
 Create an Auth0 API with:
 
-- Name: `Family Prediction Market API`
+- Name: `Bet With Friends API`
 - Identifier: `https://family-market-api`
 - Signing algorithm: `RS256`
 

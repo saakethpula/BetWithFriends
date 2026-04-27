@@ -9,7 +9,7 @@ export function LandingScreen({ onLogin }: LandingScreenProps) {
         <main className="shell landing-shell">
             <section className="landing-hero">
                 <div className="hero-copy">
-                    <p className="kicker">Family Prediction Market</p>
+                    <p className="kicker">Bet With Friends</p>
                     <h1>Private forecasting with sharper stakes and cleaner secrets.</h1>
                     <p className="hero-lede">
                         Spin up hidden markets, track family predictions, and settle results automatically in a dashboard that feels more like a modern trading desk than a school project.
