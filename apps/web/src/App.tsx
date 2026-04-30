@@ -1125,6 +1125,13 @@ export default function App() {
                 onJoinGroup={handleJoinGroup}
                 onCreateGroup={handleCreateGroup}
                 onCompleteTutorial={handleTutorialCompletion}
+                onLogout={() =>
+                    logout({
+                        logoutParams: {
+                            returnTo: window.location.origin
+                        }
+                    })
+                }
             />
         );
     }

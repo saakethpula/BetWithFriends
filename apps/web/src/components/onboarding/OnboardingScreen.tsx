@@ -40,6 +40,7 @@ type OnboardingScreenProps = {
     onJoinGroup: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onCreateGroup: (event: FormEvent<HTMLFormElement>) => Promise<void>;
     onCompleteTutorial: () => Promise<void>;
+    onLogout: () => void;
 };
 
 const TOTAL_ONBOARDING_STEPS = 4;
@@ -79,7 +80,8 @@ export function OnboardingScreen({
     onSaveVenmoHandle,
     onJoinGroup,
     onCreateGroup,
-    onCompleteTutorial
+    onCompleteTutorial,
+    onLogout
 }: OnboardingScreenProps) {
     const progressCount = onboardingStep + 1;
     const isIntroSlide = onboardingStep === 0;
@@ -488,6 +490,13 @@ export function OnboardingScreen({
                                 onClick={goToPreviousStep}
                             >
                                 Previous
+                            </button>
+                            <button
+                                className="ghost-button"
+                                type="button"
+                                onClick={onLogout}
+                            >
+                                Log out
                             </button>
 
                             {onboardingStep < TOTAL_ONBOARDING_STEPS - 1 ? (
